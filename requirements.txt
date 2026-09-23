@@ -1,4 +1,5 @@
-# Project dependencies
-# Core build script uses Python standard library (urllib, json, math, pathlib)
-# Testing:
+# Runtime
+flask>=3.0.0
+
+# Testing
 pytest>=8.0.0
