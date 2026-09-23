@@ -12,8 +12,6 @@ const state = {
   map: null,
   markerLayer: null,
   markersMap: new Map(), // station_id -> L.marker
-  currentTileLayer: null,
-  isDarkTheme: true,
   autoRefreshInterval: null,
   countdownSeconds: 300,
   countdownInterval: null,
@@ -22,16 +20,10 @@ if (typeof window !== 'undefined') {
   window.state = state;
 }
 
-// Basemap URL Configurations
-const BASEMAPS = {
-  dark: {
-    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
-    attribution: '&copy; <a href="https://www.esri.com">Esri</a> &copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> ｜ 資料：中央氣象署',
-  },
-  light: {
-    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}',
-    attribution: '&copy; <a href="https://www.esri.com">Esri</a> &copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> ｜ 資料：中央氣象署',
-  },
+// Single basemap: official OpenStreetMap standard tiles (no API key required)
+const BASEMAP = {
+  url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors ｜ 資料：中央氣象署',
 };
 
 // DOM Elements
@@ -51,8 +43,6 @@ const elements = {
   toggleDenseMode: document.getElementById('toggle-dense-mode'),
   toggleOffline: document.getElementById('toggle-offline'),
   toggleAutoRefresh: document.getElementById('toggle-auto-refresh'),
-  btnBasemapDark: document.getElementById('btn-basemap-dark'),
-  btnBasemapLight: document.getElementById('btn-basemap-light'),
   btnResetView: document.getElementById('btn-reset-view'),
   btnLocateMe: document.getElementById('btn-locate-me'),
   autoRefreshTimer: document.getElementById('auto-refresh-timer'),
@@ -105,8 +95,11 @@ function initMap() {
   // Custom Zoom Control top-right
   L.control.zoom({ position: 'bottomright' }).addTo(state.map);
 
-  // Set default Dark Basemap
-  setBasemap('dark');
+  // Single OpenStreetMap basemap
+  L.tileLayer(BASEMAP.url, {
+    maxZoom: 19,
+    attribution: BASEMAP.attribution,
+  }).addTo(state.map);
 
   // Layer group for station markers
   state.markerLayer = L.layerGroup().addTo(state.map);
@@ -123,26 +116,6 @@ function initMap() {
   state.map.on('zoomend', () => {
     renderMarkers();
   });
-}
-
-/**
- * Switch Basemap Layer
- */
-function setBasemap(theme) {
-  if (state.currentTileLayer) {
-    state.map.removeLayer(state.currentTileLayer);
-  }
-
-  const config = BASEMAPS[theme];
-  state.currentTileLayer = L.tileLayer(config.url, {
-    maxZoom: 18,
-    attribution: config.attribution,
-    subdomains: 'abcd',
-  }).addTo(state.map);
-
-  state.isDarkTheme = theme === 'dark';
-  elements.btnBasemapDark.classList.toggle('active', state.isDarkTheme);
-  elements.btnBasemapLight.classList.toggle('active', !state.isDarkTheme);
 }
 
 /**
@@ -659,10 +632,6 @@ function bindEvents() {
   elements.toggleTempLabels.addEventListener('change', renderMarkers);
   elements.toggleDenseMode.addEventListener('change', renderMarkers);
   elements.toggleOffline.addEventListener('change', applyFilters);
-
-  // Basemap Toggles
-  elements.btnBasemapDark.addEventListener('click', () => setBasemap('dark'));
-  elements.btnBasemapLight.addEventListener('click', () => setBasemap('light'));
 
   // Quick View Preset Buttons
   elements.btnResetView.addEventListener('click', () => {
