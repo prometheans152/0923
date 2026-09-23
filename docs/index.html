@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>台灣即時氣象測站網 - Taiwan CWA Real-time Weather Map</title>
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+  <!-- Google Fonts: Inter & Noto Sans TC -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app" class="dashboard-layout">
+    <!-- Map Canvas Container (AirBox inspired: full viewport map-first) -->
+    <div id="map-container">
+      <div id="map"></div>
+    </div>
+
+    <!-- Top Navigation & Metric Banner -->
+    <header class="top-bar">
+      <div class="brand">
+        <div class="brand-badge">CWA</div>
+        <div class="brand-title">
+          <h1>台灣即時氣象測站觀測網</h1>
+          <span class="sub-title">CWA O-A0003-001 全台氣象測站即時網</span>
+        </div>
+      </div>
+
+      <!-- Quick Metrics Carousel / Bar (Taiwan Weather Map inspired) -->
+      <div class="metrics-ticker">
+        <div class="metric-pill">
+          <span class="pill-label">測站總數</span>
+          <span id="metric-total-stations" class="pill-value">--</span>
+        </div>
+        <div class="metric-pill highlight-hot">
+          <span class="pill-label">最高溫</span>
+          <span id="metric-max-temp" class="pill-value">--</span>
+          <span id="metric-max-temp-st" class="pill-sub">--</span>
+        </div>
+        <div class="metric-pill highlight-cold">
+          <span class="pill-label">最低溫</span>
+          <span id="metric-min-temp" class="pill-value">--</span>
+          <span id="metric-min-temp-st" class="pill-sub">--</span>
+        </div>
+        <div class="metric-pill">
+          <span class="pill-label">平均氣溫</span>
+          <span id="metric-avg-temp" class="pill-value">--</span>
+        </div>
+        <div class="metric-pill desktop-only">
+          <span class="pill-label">最大風速</span>
+          <span id="metric-max-wind" class="pill-value">--</span>
+        </div>
+      </div>
+
+      <!-- Header Action Controls -->
+      <div class="header-actions">
+        <button id="btn-refresh" class="btn btn-primary" title="重新載入即時測站資料">
+          <span class="icon">↻</span>
+          <span class="text">重新整理</span>
+        </button>
+        <button id="btn-toggle-sidebar" class="btn btn-icon" title="展開/收合控制選單">
+          <span class="menu-icon">☰</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Floating Filter & Search Sidebar (AirBox inspired control panel) -->
+    <aside id="sidebar" class="sidebar">
+      <div class="sidebar-header">
+        <div class="sidebar-title">
+          <h2>測站篩選與控制</h2>
+          <span class="sync-badge" id="sync-status">已同步</span>
+        </div>
+        <button id="btn-close-sidebar" class="btn-close" aria-label="關閉選單">✕</button>
+      </div>
+
+      <div class="sidebar-content">
+        <!-- Search input with instant filter & dropdown -->
+        <div class="control-group">
+          <label for="search-input">快速搜尋測站</label>
+          <div class="search-box">
+            <span class="search-icon">🔍</span>
+            <input type="text" id="search-input" placeholder="輸入測站名 (如: 玉山, 鞍部) 或鄉鎮..." autocomplete="off">
+            <button id="btn-clear-search" class="btn-clear" style="display: none;">✕</button>
+          </div>
+          <div id="search-results" class="search-dropdown" style="display: none;"></div>
+        </div>
+
+        <!-- County / Region Filter -->
+        <div class="control-group">
+          <label for="filter-county">縣市篩選</label>
+          <select id="filter-county" class="custom-select">
+            <option value="ALL">全部縣市 (全台檢視)</option>
+          </select>
+        </div>
+
+        <!-- Temperature Category Filter -->
+        <div class="control-group">
+          <label for="filter-temp-category">氣溫區間篩選</label>
+          <select id="filter-temp-category" class="custom-select">
+            <option value="ALL">全部氣溫區間</option>
+            <option value="cold">嚴寒 (&lt;10°C)</option>
+            <option value="cool">寒冷~涼爽 (10-20°C)</option>
+            <option value="comfort">舒適 (20-25°C)</option>
+            <option value="warm">溫暖 (25-30°C)</option>
+            <option value="hot">炎熱~酷熱 (&gt;30°C)</option>
+          </select>
+        </div>
+
+        <!-- Display Toggles -->
+        <div class="control-group">
+          <label>地圖顯示選項</label>
+          <div class="toggle-list">
+            <label class="toggle-item">
+              <input type="checkbox" id="toggle-temp-labels" checked>
+              <span class="toggle-slider"></span>
+              <span class="toggle-text">直接顯示氣溫數值標籤</span>
+            </label>
+            <label class="toggle-item">
+              <input type="checkbox" id="toggle-dense-mode" checked>
+              <span class="toggle-slider"></span>
+              <span class="toggle-text">全台密集站點 (AirBox 模式)</span>
+            </label>
+            <label class="toggle-item">
+              <input type="checkbox" id="toggle-offline" checked>
+              <span class="toggle-slider"></span>
+              <span class="toggle-text">包含缺溫/離線站點</span>
+            </label>
+            <label class="toggle-item">
+              <input type="checkbox" id="toggle-auto-refresh" checked>
+              <span class="toggle-slider"></span>
+              <span class="toggle-text">自動更新 (每 5 分鐘)</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Map Basemap Toggle -->
+        <div class="control-group">
+          <label>地圖底圖</label>
+          <div class="button-group basemap-toggle">
+            <button id="btn-basemap-dark" class="btn btn-toggle active">🌙 深色監控</button>
+            <button id="btn-basemap-light" class="btn btn-toggle">☀️ 淺色街圖</button>
+          </div>
+        </div>
+
+        <!-- Quick View Preset Buttons -->
+        <div class="control-group">
+          <label>快速定位視角</label>
+          <div class="button-group">
+            <button id="btn-reset-view" class="btn btn-secondary">全台總覽</button>
+            <button id="btn-locate-me" class="btn btn-secondary">📍 我的位置</button>
+          </div>
+        </div>
+
+        <!-- Data Info & Source Meta -->
+        <div class="sidebar-footer">
+          <div class="meta-row">
+            <span class="meta-label">觀測時間：</span>
+            <span id="meta-obs-time" class="meta-value">--</span>
+          </div>
+          <div class="meta-row">
+            <span class="meta-label">更新時間：</span>
+            <span id="meta-gen-time" class="meta-value">--</span>
+          </div>
+          <div class="meta-row">
+            <span class="meta-label">資料來源：</span>
+            <span class="meta-value">中央氣象署 O-A0003-001</span>
+          </div>
+          <div class="meta-row">
+            <span class="meta-label">運作模式：</span>
+            <span id="meta-build-mode" class="meta-badge">載入中...</span>
+          </div>
+          <div class="meta-countdown">
+            下次自動更新：<span id="auto-refresh-timer">05:00</span>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Station Detail Panel / Modal (Taiwan Weather Map inspired) -->
+    <div id="station-detail-panel" class="detail-panel" style="display: none;">
+      <button id="btn-close-detail" class="btn-close-panel" aria-label="關閉資訊面板">✕</button>
+      <div class="detail-header">
+        <div class="detail-title-group">
+          <div class="detail-county-badge" id="detail-county">臺北市</div>
+          <h3 id="detail-name">鞍部測站</h3>
+          <span class="detail-id" id="detail-id">466910</span>
+        </div>
+        <div class="detail-temp-badge" id="detail-temp-badge">
+          <span class="temp-val" id="detail-temp">24.5</span>
+          <span class="temp-unit">°C</span>
+        </div>
+      </div>
+
+      <div class="detail-category-row">
+        <span class="badge-category" id="detail-category">舒適 (20-25°C)</span>
+        <span class="detail-weather" id="detail-weather">多雲</span>
+      </div>
+
+      <div class="detail-grid">
+        <div class="grid-item">
+          <span class="grid-icon">💧</span>
+          <div class="grid-body">
+            <span class="grid-title">相對濕度</span>
+            <span class="grid-val" id="detail-humidity">85 %</span>
+          </div>
+        </div>
+        <div class="grid-item">
+          <span class="grid-icon">💨</span>
+          <div class="grid-body">
+            <span class="grid-title">平均風速</span>
+            <span class="grid-val" id="detail-wind">3.2 m/s</span>
+          </div>
+        </div>
+        <div class="grid-item">
+          <span class="grid-icon">🧭</span>
+          <div class="grid-body">
+            <span class="grid-title">風向 / 瞬間陣風</span>
+            <span class="grid-val" id="detail-wind-dir">30° / 6.5 m/s</span>
+          </div>
+        </div>
+        <div class="grid-item">
+          <span class="grid-icon">🌧️</span>
+          <div class="grid-body">
+            <span class="grid-title">降水量</span>
+            <span class="grid-val" id="detail-precipitation">0.0 mm</span>
+          </div>
+        </div>
+        <div class="grid-item">
+          <span class="grid-icon">⏱️</span>
+          <div class="grid-body">
+            <span class="grid-title">氣壓</span>
+            <span class="grid-val" id="detail-pressure">1011.2 hPa</span>
+          </div>
+        </div>
+        <div class="grid-item">
+          <span class="grid-icon">⛰️</span>
+          <div class="grid-body">
+            <span class="grid-title">測站海拔</span>
+            <span class="grid-val" id="detail-altitude">825 m</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="detail-footer">
+        <span class="obs-time-text">觀測時間：<span id="detail-obs-time">--</span></span>
+        <button id="btn-focus-station" class="btn btn-sm btn-outline">居中此測站</button>
+      </div>
+    </div>
+
+    <!-- Temperature Color Scale Legend (Teacher acceptance criteria) -->
+    <div class="legend-container">
+      <div class="legend-header">
+        <span class="legend-title">氣溫色階 (°C)</span>
+        <span class="legend-subtitle">即時監控分級</span>
+      </div>
+      <div class="legend-bar">
+        <div class="legend-step" style="background-color: #2563EB;" title="&lt;10°C 嚴寒">
+          <span class="step-label">&lt;10</span>
+        </div>
+        <div class="legend-step" style="background-color: #06B6D4;" title="10-15°C 寒冷">
+          <span class="step-label">10</span>
+        </div>
+        <div class="legend-step" style="background-color: #10B981;" title="15-20°C 涼爽">
+          <span class="step-label">15</span>
+        </div>
+        <div class="legend-step" style="background-color: #EAB308;" title="20-25°C 舒適 (黃色系)">
+          <span class="step-label">20</span>
+        </div>
+        <div class="legend-step" style="background-color: #F97316;" title="25-30°C 溫暖">
+          <span class="step-label">25</span>
+        </div>
+        <div class="legend-step" style="background-color: #EF4444;" title="30-35°C 炎熱">
+          <span class="step-label">30</span>
+        </div>
+        <div class="legend-step" style="background-color: #991B1B;" title="&gt;35°C 酷熱 (深紅)">
+          <span class="step-label">&gt;35</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Notification Toast -->
+    <div id="toast" class="toast" style="display: none;"></div>
+  </div>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <!-- Application Main Script -->
+  <script src="app.js"></script>
+</body>
+</html>
