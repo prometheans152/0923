@@ -12,6 +12,8 @@ const state = {
   map: null,
   markerLayer: null,
   markersMap: new Map(), // station_id -> L.marker
+  currentTileLayer: null,
+  isDarkTheme: true,
   autoRefreshInterval: null,
   countdownSeconds: 300,
   countdownInterval: null,
@@ -20,10 +22,17 @@ if (typeof window !== 'undefined') {
   window.state = state;
 }
 
-// Single basemap: official OpenStreetMap standard tiles (no API key required)
-const BASEMAP = {
-  url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors ｜ 資料：中央氣象署',
+// MapTiler basemaps. The browser key is restricted by Allowed HTTP Origins in MapTiler Cloud.
+const MAPTILER_API_KEY = 'B9f2YXJnmuw4iY68TmG7';
+const BASEMAPS = {
+  dark: {
+    url: `https://api.maptiler.com/maps/streets-v4-dark/256/{z}/{x}/{y}.png?key=${MAPTILER_API_KEY}`,
+    attribution: '&copy; <a href="https://www.maptiler.com/copyright/">MapTiler</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors ｜ 資料：中央氣象署',
+  },
+  light: {
+    url: `https://api.maptiler.com/maps/streets-v4/256/{z}/{x}/{y}.png?key=${MAPTILER_API_KEY}`,
+    attribution: '&copy; <a href="https://www.maptiler.com/copyright/">MapTiler</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors ｜ 資料：中央氣象署',
+  },
 };
 
 // DOM Elements
@@ -43,6 +52,8 @@ const elements = {
   toggleDenseMode: document.getElementById('toggle-dense-mode'),
   toggleOffline: document.getElementById('toggle-offline'),
   toggleAutoRefresh: document.getElementById('toggle-auto-refresh'),
+  btnBasemapDark: document.getElementById('btn-basemap-dark'),
+  btnBasemapLight: document.getElementById('btn-basemap-light'),
   btnResetView: document.getElementById('btn-reset-view'),
   btnLocateMe: document.getElementById('btn-locate-me'),
   autoRefreshTimer: document.getElementById('auto-refresh-timer'),
@@ -95,11 +106,8 @@ function initMap() {
   // Custom Zoom Control top-right
   L.control.zoom({ position: 'bottomright' }).addTo(state.map);
 
-  // Single OpenStreetMap basemap
-  L.tileLayer(BASEMAP.url, {
-    maxZoom: 19,
-    attribution: BASEMAP.attribution,
-  }).addTo(state.map);
+  // Default to MapTiler dark basemap.
+  setBasemap('dark');
 
   // Layer group for station markers
   state.markerLayer = L.layerGroup().addTo(state.map);
@@ -116,6 +124,29 @@ function initMap() {
   state.map.on('zoomend', () => {
     renderMarkers();
   });
+}
+
+/**
+ * Switch MapTiler basemap.
+ */
+function setBasemap(theme) {
+  const config = BASEMAPS[theme] || BASEMAPS.dark;
+
+  if (state.currentTileLayer) {
+    state.map.removeLayer(state.currentTileLayer);
+  }
+
+  state.currentTileLayer = L.tileLayer(config.url, {
+    minZoom: 1,
+    maxZoom: 19,
+    tileSize: 256,
+    crossOrigin: true,
+    attribution: config.attribution,
+  }).addTo(state.map);
+
+  state.isDarkTheme = theme === 'dark';
+  elements.btnBasemapDark?.classList.toggle('active', state.isDarkTheme);
+  elements.btnBasemapLight?.classList.toggle('active', !state.isDarkTheme);
 }
 
 /**
@@ -632,6 +663,10 @@ function bindEvents() {
   elements.toggleTempLabels.addEventListener('change', renderMarkers);
   elements.toggleDenseMode.addEventListener('change', renderMarkers);
   elements.toggleOffline.addEventListener('change', applyFilters);
+
+  // Basemap Toggles
+  elements.btnBasemapDark.addEventListener('click', () => setBasemap('dark'));
+  elements.btnBasemapLight.addEventListener('click', () => setBasemap('light'));
 
   // Quick View Preset Buttons
   elements.btnResetView.addEventListener('click', () => {
