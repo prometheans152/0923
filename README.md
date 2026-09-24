@@ -374,6 +374,34 @@ tests/test_schema.py::test_generated_stations_json_schema PASSED         [100%]
 | `https://prometheans152.github.io/0923/` | 200 | GitHub Pages 備援站台正常 | **PASS** |
 | `https://prometheans152.github.io/0923/data/stations.json` | 200 | 靜態 JSON 降級備援正常 | **PASS** |
 
+```text
+=== VERCEL PRODUCTION VERIFICATION ===
+  GET /                      -> HTTP 200
+  GET /app.js                -> HTTP 200
+  GET /data/stations.json    -> HTTP 200
+  GET /api/weather           -> HTTP 200
+  GET /api/db-check          -> HTTP 200
+
+  /api/weather contract:
+    - storage:          sqlite
+    - build_mode:       live_cwa_api
+    - observation_time: 2026-09-24T22:20:00+08:00
+    - stations count:   362
+
+  /api/db-check proof:
+    - database:         sqlite
+    - row_count:        362
+    - latest_obs:       2026-09-24T22:20:00+08:00
+    - sample rows:
+      * 五峰站 (72D080) [新竹縣 五峰鄉]: Temp 19.4°C, RH 95.0%, Wind 0.6 m/s, Weather: 晴
+      * 國一N077K (CAD020) [新竹縣 湖口鄉]: Temp 23.8°C, RH 84.0%, Wind 1.1 m/s, Weather: 晴
+      * 國一S082K (CAD030) [新竹縣 湖口鄉]: Temp 24.7°C, RH 82.0%, Wind 0.8 m/s, Weather: 晴
+
+=== GITHUB PAGES FALLBACK VERIFICATION ===
+  GET /                      -> HTTP 200
+  GET /data/stations.json    -> HTTP 200
+```
+
 - **Gate 5 結論：PASS**
 
 ---
