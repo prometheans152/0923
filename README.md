@@ -287,9 +287,9 @@ node --check docs/app.js:        語法檢查 PASS (無語法錯誤)
 | `GET /app.js` | HTTP 200 | **PASS** |
 | `GET /data/stations.json` | HTTP 200 | **PASS** |
 | `GET /api/weather` | HTTP 200；`storage=sqlite`、`build_mode=live_cwa_api`、362 站 | **PASS** |
-| Production SQLite 觀測時間 | `2026-09-24T21:40:00+08:00` | **PASS** |
+| Production SQLite 觀測時間 | `2026-09-24T22:00:00+08:00` | **PASS** |
 | `GET /api/db-check?county=新竹縣&limit=3` | HTTP 200；`database=sqlite`、`row_count=362` | **PASS** |
-| Production SQL 抽樣 | 五峰站 19.4°C、國一N077K 24.1°C、國一S082K 24.8°C | **PASS** |
+| Production SQL 抽樣 | 五峰站 19.5°C、國一N077K 24.0°C、國一S082K 24.8°C | **PASS** |
 
 這項驗證可證明正式 Vercel 網站並非只顯示前端假資料，而是由 Flask Serverless Function 實際讀取部署版本中的 SQLite `data.db`，再透過 `/api/weather` 提供 GIS 前端使用。
 
