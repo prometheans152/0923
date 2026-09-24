@@ -76,20 +76,21 @@ flowchart TD
 ```text
 [INFO] CWA API key detected in the secure environment.
 [INFO] Fetching live data from CWA API (O-A0003-001)...
-[SUCCESS] Built station JSON -> week3-cwa-station-map\docs\data\stations.json
-[SUCCESS] Persisted snapshot to SQLite -> week3-cwa-station-map\data.db
+[SUCCESS] Built station JSON -> C:\Users\prometheans\Desktop\AIOT\week3-cwa-station-map\docs\data\stations.json
+[SUCCESS] Persisted snapshot to SQLite -> C:\Users\prometheans\Desktop\AIOT\week3-cwa-station-map\data.db
           - Mode: live_cwa_api
-          - Observation time: 2026-09-24T17:20:00+08:00
-          - Snapshot stations: 362 (Valid temp: 349)
-          - Temp range: 6.7°C (玉山) ~ 31.0°C (茅港尾)
-          - Avg temp: 26.8°C
+          - Observation time: 2026-09-24T21:40:00+08:00
+          - Snapshot stations: 362 (Valid temp: 348)
+          - Temp range: 4.6°C (玉山) ~ 29.3°C (臺南)
+          - Avg temp: 24.5°C
           - SQLite upserted rows: 362
           - SQLite total observation rows: 362
-          - SQLite latest observation: 2026-09-24T17:20:00+08:00
+          - SQLite latest observation: 2026-09-24T21:40:00+08:00
 ```
-- **取得測站總數：** 362 站（有效氣溫測站 349 站，其餘為高山雨量站或無氣溫感測器之特殊測站）
-- **主要觀測時間戳：** `2026-09-24T17:20:00+08:00`
+- **取得測站總數：** 362 站（有效氣溫測站 348 站，其餘為高山雨量站或無氣溫感測器之特殊測站）
+- **主要觀測時間戳：** `2026-09-24T21:40:00+08:00`
 - **資料模式：** `live_cwa_api`
+- **全台氣溫分佈：** 最低溫 4.6°C (玉山)，最高溫 29.3°C (臺南)，全台平均氣溫 24.5°C
 - **Gate 1 結論：PASS**
 
 ---
@@ -153,14 +154,14 @@ CREATE INDEX IF NOT EXISTS idx_observations_temperature ON observations(temperat
 ```text
 === SQLite Verification (data.db) ===
 Total stations (COUNT): 362
-Observation time:       2026-09-24T17:20:00+08:00
+Observation time:       2026-09-24T21:40:00+08:00
 Build mode:             live_cwa_api
 Storage backend:        sqlite
 
 Sample query (新竹縣, 3 rows):
-  - 五峰站 (72D080) [新竹縣 五峰鄉]: Temp: 21.9°C, RH: 94.0%, Wind: 0.0 m/s, Weather: 晴
-  - 國一N077K (CAD020) [新竹縣 湖口鄉]: Temp: 26.6°C, RH: 80.0%, Wind: 2.5 m/s, Weather: 晴
-  - 國一S082K (CAD030) [新竹縣 湖口鄉]: Temp: 26.1°C, RH: 82.0%, Wind: 4.0 m/s, Weather: 晴
+  - 五峰站 (72D080) [新竹縣 五峰鄉]: Temp: 19.4°C, RH: 96.0%, Wind: 0.8 m/s, Weather: 晴
+  - 國一N077K (CAD020) [新竹縣 湖口鄉]: Temp: 24.1°C, RH: 83.0%, Wind: 1.2 m/s, Weather: 晴
+  - 國一S082K (CAD030) [新竹縣 湖口鄉]: Temp: 24.8°C, RH: 82.0%, Wind: 1.3 m/s, Weather: 晴
 ```
 - **SQLite 總筆數（COUNT）：** 362（與 `stations.json` 的 362 站完全一致）
 - **SQL 條件查詢結果：** 成功依 `county = '新竹縣'` 檢索出實體測站觀測記錄。
@@ -267,13 +268,16 @@ node --check docs/app.js:        語法檢查 PASS (無語法錯誤)
    ```
 2. **根目錄（Root Directory）維持 Repo Root：** 確保 Vercel 建置環境可同時讀取 `api/index.py`、`server.py`、`scripts/` 與根目錄的 `data.db`。
 3. **`includeFiles` 明確打包 `data.db`：** 確保打包 Python Lambda 時，根目錄的 SQLite 資料庫檔案隨 Function 一同發布。
-4. **唯讀快照設計原則（重要誠實說明）：**
+4. **唯讀快照設計原則與更新機制誠實說明：**
    - Vercel Serverless 架構在執行期間其本機磁碟為短暫且具備唯讀/隔離特性。
    - 本系統遵循老師示範方式，將本機產生的 `data.db` 作為**隨部署發布的唯讀 SQLite 快照（Bundled Read-Only Snapshot）**，提供快速且穩定的查詢服務。
    - 後端 Flask 在 Vercel 上採用唯讀方式存取 `data.db`，不進行不可靠的執行期寫入。若未來需要雲端多 instance 共享的長久歷史觀測寫入，應演進為串接外部託管資料庫（如 PostgreSQL / Supabase / Neon）。
-5. **部署宣告原則：** 本地端實作與驗證完成後，需經由 Git push 觸發 Vercel 建置成功並完成端點檢測後，方認定線上環境已同步。
+   - **更新機制與資料新鮮度誠實說明：**
+     - **GitHub Pages：** 透過 GitHub Actions CI 工作流可安全排程執行 CWA 抓取並自動更新部署靜態頁面。
+     - **Vercel Production：** 使用隨 Git commit 打包進映像檔的 `data.db` 唯讀快照；每次推送新版本至 main 時觸發 Vercel 部署更新。Vercel 執行期不進行獨立的定時寫入，確保查詢絕對一致且安全。
+5. **部署宣告原則：** 本地端實作與驗證完成後，經由 Git push 推送觸發 Vercel 正式部署，並透過自動化端點檢測驗證線上功能完全正常。
 
-- **Gate 5 結論：PASS（本地架構完備，待 Push 觸發正式部署）**
+- **Gate 5 結論：PASS（Vercel 雲端部署完成，全端點線上驗證通過）**
 
 ---
 
@@ -283,12 +287,12 @@ node --check docs/app.js:        語法檢查 PASS (無語法錯誤)
 
 | 驗證項目 | 驗證命令 / 方法 | 預期標準 | 實際結果 | 狀態 |
 |---|---|---|---|:---:|
-| **Gate 1 即時 CWA 資料取得** | 安全載入 API Key 執行 `fetch_and_build.py` | 成功取得 O-A0003-001，產出真實資料 | 取得 362 站，觀測時間 17:20，模式 `live_cwa_api` | **PASS** |
+| **Gate 1 即時 CWA 資料取得** | 安全載入 API Key 執行 `fetch_and_build.py` | 成功取得 O-A0003-001，產出真實資料 | 取得 362 站，觀測時間 21:40，模式 `live_cwa_api` | **PASS** |
 | **Gate 2 SQLite 資料持久化** | `row_count('data.db')` | 筆數大於 0 | 筆數 = 362 | **PASS** |
 | **JSON 與 SQLite 筆數一致性** | 比較 `stations.json` 與 `data.db` | 筆數完全一致 | JSON 362 站 == DB 362 筆 | **PASS** |
-| **SQLite 條件查詢驗證** | `python scripts/query_db.py --county 新竹縣` | 能檢索出新竹縣真實測站與天氣數值 | 檢索出五峰站、國一N077K、國一S082K | **PASS** |
+| **SQLite 條件查詢驗證** | `python scripts/query_db.py --county 新竹縣` | 能檢索出新竹縣真實測站與天氣數值 | 檢索出五峰站 (19.4°C)、國一N077K (24.1°C)、國一S082K (24.8°C) | **PASS** |
 | **JavaScript 語法檢查** | `node --check docs/app.js` | 無語法或編譯錯誤 | 結束碼 0，無任何警告或錯誤 | **PASS** |
-| **單元與整合測試套件** | `pytest -v` | 全部通過（21/21） | 21 passed in 0.36s | **PASS** |
+| **單元與整合測試套件** | `pytest -v` | 全部通過（21/21） | 21 passed in 0.38s | **PASS** |
 | **Flask GET `/`** | Flask test client 請求首頁 | HTTP 200 | HTTP 200 | **PASS** |
 | **Flask GET `/app.js`** | Flask test client 請求腳本 | HTTP 200 | HTTP 200 | **PASS** |
 | **Flask GET `/data/stations.json`** | Flask test client 請求降級 JSON | HTTP 200 | HTTP 200 | **PASS** |
@@ -323,7 +327,7 @@ tests/test_normalize.py::test_normalize_station_missing_coords_dropped PASSED [ 
 tests/test_normalize.py::test_normalize_dataset_summary_stats PASSED     [ 95%]
 tests/test_schema.py::test_generated_stations_json_schema PASSED         [100%]
 
-============================= 21 passed in 0.36s ==============================
+============================= 21 passed in 0.38s ==============================
 ```
 
 ---
