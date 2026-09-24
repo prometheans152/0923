@@ -277,7 +277,23 @@ node --check docs/app.js:        語法檢查 PASS (無語法錯誤)
      - **Vercel Production：** 使用隨 Git commit 打包進映像檔的 `data.db` 唯讀快照；每次推送新版本至 main 時觸發 Vercel 部署更新。Vercel 執行期不進行獨立的定時寫入，確保查詢絕對一致且安全。
 5. **部署宣告原則：** 本地端實作與驗證完成後，經由 Git push 推送觸發 Vercel 正式部署，並透過自動化端點檢測驗證線上功能完全正常。
 
-- **Gate 5 結論：PASS（Vercel 雲端部署完成，全端點線上驗證通過）**
+### Vercel Production 線上驗證
+
+於正式網址 `https://0923-site.vercel.app/` 進行實際線上檢查，結果如下：
+
+| Production 檢查項目 | 實際結果 | 狀態 |
+|---|---|:---:|
+| `GET /` | HTTP 200 | **PASS** |
+| `GET /app.js` | HTTP 200 | **PASS** |
+| `GET /data/stations.json` | HTTP 200 | **PASS** |
+| `GET /api/weather` | HTTP 200；`storage=sqlite`、`build_mode=live_cwa_api`、362 站 | **PASS** |
+| Production SQLite 觀測時間 | `2026-09-24T21:40:00+08:00` | **PASS** |
+| `GET /api/db-check?county=新竹縣&limit=3` | HTTP 200；`database=sqlite`、`row_count=362` | **PASS** |
+| Production SQL 抽樣 | 五峰站 19.4°C、國一N077K 24.1°C、國一S082K 24.8°C | **PASS** |
+
+這項驗證可證明正式 Vercel 網站並非只顯示前端假資料，而是由 Flask Serverless Function 實際讀取部署版本中的 SQLite `data.db`，再透過 `/api/weather` 提供 GIS 前端使用。
+
+- **Gate 5 結論：PASS（Vercel 雲端部署完成，正式環境 SQLite 與全部主要端點已實測通過）**
 
 ---
 
