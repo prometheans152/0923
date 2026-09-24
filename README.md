@@ -57,7 +57,7 @@ flowchart TD
 | **底圖切換** | MapTiler Streets v4 / Dark | 依使用者偏好切換深色與淺色向量光柵底圖 |
 | **版本管理** | Git + GitHub | 程式碼歷程管理、CI 自動化測試工作流 |
 | **雲端部署** | Vercel (`@vercel/python`) | Python Serverless Function，打包唯讀 SQLite 快照 |
-| **自動化測試** | pytest (21 tests) + node --check | 覆蓋 Schema、色階、SQLite 綱要、列數一致性、Flask API |
+| **自動化測試** | pytest (22 tests) + node --check | 覆蓋 Schema、色階、SQLite 綱要與重複測站 Upsert、列數一致性、Flask API |
 
 ---
 
@@ -76,21 +76,21 @@ flowchart TD
 ```text
 [INFO] CWA API key detected in the secure environment.
 [INFO] Fetching live data from CWA API (O-A0003-001)...
-[SUCCESS] Built station JSON -> C:\Users\prometheans\Desktop\AIOT\week3-cwa-station-map\docs\data\stations.json
-[SUCCESS] Persisted snapshot to SQLite -> C:\Users\prometheans\Desktop\AIOT\week3-cwa-station-map\data.db
+[SUCCESS] Built station JSON -> docs/data/stations.json
+[SUCCESS] Persisted snapshot to SQLite -> data.db
           - Mode: live_cwa_api
-          - Observation time: 2026-09-24T21:40:00+08:00
-          - Snapshot stations: 362 (Valid temp: 348)
-          - Temp range: 4.6°C (玉山) ~ 29.3°C (臺南)
-          - Avg temp: 24.5°C
+          - Observation time: 2026-09-24T22:00:00+08:00
+          - Snapshot stations: 362 (Valid temp: 349)
+          - Temp range: 4.5°C (玉山) ~ 29.4°C (臺南)
+          - Avg temp: 24.4°C
           - SQLite upserted rows: 362
           - SQLite total observation rows: 362
-          - SQLite latest observation: 2026-09-24T21:40:00+08:00
+          - SQLite latest observation: 2026-09-24T22:00:00+08:00
 ```
-- **取得測站總數：** 362 站（有效氣溫測站 348 站，其餘為高山雨量站或無氣溫感測器之特殊測站）
-- **主要觀測時間戳：** `2026-09-24T21:40:00+08:00`
+- **取得測站總數：** 362 站（有效氣溫測站 349 站，其餘為高山雨量站或無氣溫感測器之特殊測站）
+- **主要觀測時間戳：** `2026-09-24T22:00:00+08:00`
 - **資料模式：** `live_cwa_api`
-- **全台氣溫分佈：** 最低溫 4.6°C (玉山)，最高溫 29.3°C (臺南)，全台平均氣溫 24.5°C
+- **全台氣溫分佈：** 最低溫 4.5°C (玉山)，最高溫 29.4°C (臺南)，全台平均氣溫 24.4°C
 - **Gate 1 結論：PASS**
 
 ---
@@ -154,14 +154,14 @@ CREATE INDEX IF NOT EXISTS idx_observations_temperature ON observations(temperat
 ```text
 === SQLite Verification (data.db) ===
 Total stations (COUNT): 362
-Observation time:       2026-09-24T21:40:00+08:00
+Observation time:       2026-09-24T22:00:00+08:00
 Build mode:             live_cwa_api
 Storage backend:        sqlite
 
 Sample query (新竹縣, 3 rows):
-  - 五峰站 (72D080) [新竹縣 五峰鄉]: Temp: 19.4°C, RH: 96.0%, Wind: 0.8 m/s, Weather: 晴
-  - 國一N077K (CAD020) [新竹縣 湖口鄉]: Temp: 24.1°C, RH: 83.0%, Wind: 1.2 m/s, Weather: 晴
-  - 國一S082K (CAD030) [新竹縣 湖口鄉]: Temp: 24.8°C, RH: 82.0%, Wind: 1.3 m/s, Weather: 晴
+  - 五峰站 (72D080) [新竹縣 五峰鄉]: Temp: 19.5°C, RH: 94.0%, Wind: 0.8 m/s, Weather: 晴
+  - 國一N077K (CAD020) [新竹縣 湖口鄉]: Temp: 24.0°C, RH: 83.0%, Wind: 1.1 m/s, Weather: 晴
+  - 國一S082K (CAD030) [新竹縣 湖口鄉]: Temp: 24.8°C, RH: 83.0%, Wind: 1.0 m/s, Weather: 晴
 ```
 - **SQLite 總筆數（COUNT）：** 362（與 `stations.json` 的 362 站完全一致）
 - **SQL 條件查詢結果：** 成功依 `county = '新竹縣'` 檢索出實體測站觀測記錄。
@@ -219,13 +219,13 @@ node --check docs/app.js:        語法檢查 PASS (無語法錯誤)
 1. 專案所有程式碼、測試、靜態資源與設定檔均由 Git 進行嚴格版本管理。
 2. 建立 `.github/workflows/update-and-deploy.yml` 自動化工作流：
    - 設定排程（每 30 分鐘自動執行）與手動觸發（`workflow_dispatch`）。
-   - 在安全環境中注入 Repository Secret `CWA_API_KEY`。
+   - 在安全環境中傳遞 Repository Secret `CWA_API_KEY`（若 GitHub Repository 設定了該 Secret 則即時抓取最新資料；若未設定則自動平滑降級為離線測試資料，確保工作流程與測試始終 PASS，絕不硬編碼密鑰）。
    - **優先執行資料管線：** 先執行 `python scripts/fetch_and_build.py` 同步最新 CWA 資料並更新 `data.db` 與 `docs/data/stations.json`。
-   - **執行品質門檻測試：** 執行 `pytest -v`（包含 21 個針對色階、Schema、SQLite 一致性、Flask API 的單元與整合測試）與 `node --check docs/app.js`。
+   - **執行品質門檻測試：** 執行 `pytest -v`（包含 22 個針對色階、Schema、SQLite 綱要與重複測站 Upsert 行為、列數一致性、Flask API 的單元與整合測試）與 `node --check docs/app.js`。
    - **發布 GitHub Pages：** 上傳 `docs/` 目錄並部署為靜態備份站台。
 3. 機敏資訊管理：
    - 任何 API Key 均不納入 Git 提交。
-   - `.gitignore` 排除各類環境設定與快取，確保 `data.db` 作為發布快照受版本控制追蹤。
+   - `.gitignore` 排除各類環境設定、`api_key.txt` 與快取，確保 `data.db` 作為發布快照受版本控制追蹤。
 
 - **Gate 4 結論：PASS**
 
@@ -303,12 +303,12 @@ node --check docs/app.js:        語法檢查 PASS (無語法錯誤)
 
 | 驗證項目 | 驗證命令 / 方法 | 預期標準 | 實際結果 | 狀態 |
 |---|---|---|---|:---:|
-| **Gate 1 即時 CWA 資料取得** | 安全載入 API Key 執行 `fetch_and_build.py` | 成功取得 O-A0003-001，產出真實資料 | 取得 362 站，觀測時間 21:40，模式 `live_cwa_api` | **PASS** |
+| **Gate 1 即時 CWA 資料取得** | 安全載入 API Key 執行 `fetch_and_build.py` | 成功取得 O-A0003-001，產出真實資料 | 取得 362 站，觀測時間 22:00，模式 `live_cwa_api` | **PASS** |
 | **Gate 2 SQLite 資料持久化** | `row_count('data.db')` | 筆數大於 0 | 筆數 = 362 | **PASS** |
 | **JSON 與 SQLite 筆數一致性** | 比較 `stations.json` 與 `data.db` | 筆數完全一致 | JSON 362 站 == DB 362 筆 | **PASS** |
-| **SQLite 條件查詢驗證** | `python scripts/query_db.py --county 新竹縣` | 能檢索出新竹縣真實測站與天氣數值 | 檢索出五峰站 (19.4°C)、國一N077K (24.1°C)、國一S082K (24.8°C) | **PASS** |
+| **SQLite 條件查詢驗證** | `python scripts/query_db.py --county 新竹縣` | 能檢索出新竹縣真實測站與天氣數值 | 檢索出五峰站 (19.5°C)、國一N077K (24.0°C)、國一S082K (24.8°C) | **PASS** |
 | **JavaScript 語法檢查** | `node --check docs/app.js` | 無語法或編譯錯誤 | 結束碼 0，無任何警告或錯誤 | **PASS** |
-| **單元與整合測試套件** | `pytest -v` | 全部通過（21/21） | 21 passed in 0.38s | **PASS** |
+| **單元與整合測試套件** | `pytest -v` | 全部通過（22/22） | 22 passed in 0.44s | **PASS** |
 | **Flask GET `/`** | Flask test client 請求首頁 | HTTP 200 | HTTP 200 | **PASS** |
 | **Flask GET `/app.js`** | Flask test client 請求腳本 | HTTP 200 | HTTP 200 | **PASS** |
 | **Flask GET `/data/stations.json`** | Flask test client 請求降級 JSON | HTTP 200 | HTTP 200 | **PASS** |
@@ -318,32 +318,34 @@ node --check docs/app.js:        語法檢查 PASS (無語法錯誤)
 ### 測試執行詳細清單 (pytest output)
 ```text
 ============================= test session starts =============================
-platform win32 -- Python 3.12.10, pytest-9.1.1, pluggy-1.6.0
-collected 21 items
+platform win32 -- Python 3.11.15, pytest-9.1.1, pluggy-1.6.0
+rootdir: C:\Users\prometheans\Desktop\AIOT\homework-cwa-forecast
+collected 22 items
 
 tests/test_color_scale.py::test_temperature_below_10_is_blue PASSED      [  4%]
 tests/test_color_scale.py::test_temperature_20_to_25_is_yellowish PASSED [  9%]
-tests/test_color_scale.py::test_temperature_above_35_is_deep_red PASSED  [ 14%]
-tests/test_color_scale.py::test_temperature_intermediate_bins PASSED     [ 19%]
-tests/test_color_scale.py::test_missing_temperature PASSED               [ 23%]
-tests/test_database.py::test_schema_initializes PASSED                   [ 28%]
-tests/test_database.py::test_metadata_table_fields PASSED                [ 33%]
-tests/test_database.py::test_atomic_snapshot_replacement PASSED          [ 38%]
-tests/test_database.py::test_row_count_matches_json PASSED               [ 42%]
-tests/test_database.py::test_query_sample_works PASSED                   [ 47%]
-tests/test_database.py::test_latest_payload_reconstruction PASSED        [ 52%]
-tests/test_database.py::test_flask_api_weather_uses_sqlite PASSED        [ 57%]
-tests/test_database.py::test_flask_routes_all_200 PASSED                 [ 61%]
-tests/test_normalize.py::test_clean_number_sentinels PASSED              [ 66%]
-tests/test_normalize.py::test_clean_number_valid PASSED                  [ 71%]
-tests/test_normalize.py::test_clean_number_bounds PASSED                 [ 76%]
-tests/test_normalize.py::test_extract_coordinates PASSED                 [ 80%]
-tests/test_normalize.py::test_normalize_station_valid PASSED             [ 85%]
+tests/test_color_scale.py::test_temperature_above_35_is_deep_red PASSED  [ 13%]
+tests/test_color_scale.py::test_temperature_intermediate_bins PASSED     [ 18%]
+tests/test_color_scale.py::test_missing_temperature PASSED               [ 22%]
+tests/test_database.py::test_schema_initializes PASSED                   [ 27%]
+tests/test_database.py::test_metadata_table_fields PASSED                [ 31%]
+tests/test_database.py::test_atomic_snapshot_replacement PASSED          [ 36%]
+tests/test_database.py::test_upsert_duplicate_station_behavior PASSED    [ 40%]
+tests/test_database.py::test_row_count_matches_json PASSED               [ 45%]
+tests/test_database.py::test_query_sample_works PASSED                   [ 50%]
+tests/test_database.py::test_latest_payload_reconstruction PASSED        [ 54%]
+tests/test_database.py::test_flask_api_weather_uses_sqlite PASSED        [ 59%]
+tests/test_database.py::test_flask_routes_all_200 PASSED                 [ 63%]
+tests/test_normalize.py::test_clean_number_sentinels PASSED              [ 68%]
+tests/test_normalize.py::test_clean_number_valid PASSED                  [ 72%]
+tests/test_normalize.py::test_clean_number_bounds PASSED                 [ 77%]
+tests/test_normalize.py::test_extract_coordinates PASSED                 [ 81%]
+tests/test_normalize.py::test_normalize_station_valid PASSED             [ 86%]
 tests/test_normalize.py::test_normalize_station_missing_coords_dropped PASSED [ 90%]
 tests/test_normalize.py::test_normalize_dataset_summary_stats PASSED     [ 95%]
 tests/test_schema.py::test_generated_stations_json_schema PASSED         [100%]
 
-============================= 21 passed in 0.38s ==============================
+============================= 22 passed in 0.44s ==============================
 ```
 
 ---
@@ -380,7 +382,7 @@ tests/test_schema.py::test_generated_stations_json_schema PASSED         [100%]
 
 ### 目錄結構
 ```text
-week3-cwa-station-map/
+homework-cwa-forecast/ (0923)
 ├── .github/
 │   └── workflows/
 │       └── update-and-deploy.yml    # GitHub Actions 自動化工作流
@@ -421,10 +423,8 @@ week3-cwa-station-map/
 
 2. **安全執行 Gate 1 & Gate 2（CWA 資料取得並寫入 SQLite）：**
    ```powershell
-   # 於 PowerShell 安全注入環境變數（不印出金鑰內容）
-   $env:CWA_API_KEY = (Get-Content "..\homework-cwa-forecast\api_key.txt" -Raw).Trim()
+   # 於專案根目錄備妥 api_key.txt（已被 .gitignore 忽略保護），或設定環境變數 CWA_API_KEY
    python scripts/fetch_and_build.py
-   Remove-Item Env:\CWA_API_KEY
    ```
 
 3. **執行 Gate 2 資料庫查詢驗證：**

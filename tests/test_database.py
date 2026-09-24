@@ -138,6 +138,62 @@ def test_atomic_snapshot_replacement(tmp_path):
     assert payload["stations"][0]["temperature"] == 26.5
 
 
+def test_upsert_duplicate_station_behavior(tmp_path):
+    """Verify upsert handles duplicate station_id gracefully without duplicates."""
+    db = tmp_path / "weather.db"
+    base_payload = make_payload("2026-09-24T10:00:00+08:00", 22.0)
+    # Add a duplicate station entry with same station_id but updated temperature
+    duplicate_station = dict(base_payload["stations"][0])
+    duplicate_station["temperature"] = 29.5
+    duplicate_station["weather"] = "多雲"
+    payload_with_dupes = {
+        "metadata": base_payload["metadata"],
+        "stations": [base_payload["stations"][0], duplicate_station],
+    }
+
+    inserted = upsert_payload(db, payload_with_dupes, "test_upsert")
+    assert inserted == 2  # Processed 2 entries
+    assert row_count(db) == 1  # Exactly 1 row because station_id is PRIMARY KEY
+
+    with connect_readonly(db) as conn:
+        row = conn.execute(
+            "SELECT temperature, weather FROM observations WHERE station_id = ?",
+            ("C0TEST",),
+        ).fetchone()
+        assert row is not None
+        # Last inserted duplicate overwrote the earlier record
+        assert row["temperature"] == 29.5
+        assert row["weather"] == "多雲"
+
+    # Test incremental upsert with replace=False
+    new_station = dict(base_payload["stations"][0])
+    new_station["station_id"] = "C0SECOND"
+    new_station["station_name"] = "第二測站"
+    new_station["temperature"] = 21.0
+    incremental_payload = {
+        "metadata": base_payload["metadata"],
+        "stations": [new_station],
+    }
+    upsert_payload(db, incremental_payload, "test_upsert", replace=False)
+    assert row_count(db) == 2  # Now 2 unique stations
+
+    # Update C0TEST again with replace=False
+    update_station = dict(duplicate_station)
+    update_station["temperature"] = 31.0
+    update_payload = {
+        "metadata": base_payload["metadata"],
+        "stations": [update_station],
+    }
+    upsert_payload(db, update_payload, "test_upsert", replace=False)
+    assert row_count(db) == 2  # Still 2 unique stations (no duplicates)
+    with connect_readonly(db) as conn:
+        row = conn.execute(
+            "SELECT temperature FROM observations WHERE station_id = ?",
+            ("C0TEST",),
+        ).fetchone()
+        assert row["temperature"] == 31.0
+
+
 def test_row_count_matches_json():
     """Verify data.db station count exactly matches docs/data/stations.json."""
     db_path = PROJECT_ROOT / "data.db"

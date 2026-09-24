@@ -52,6 +52,17 @@ def get_cwa_api_key() -> Optional[str]:
                         return value
         except Exception:
             pass
+
+    key_file = PROJECT_ROOT / "api_key.txt"
+    if key_file.is_file():
+        try:
+            with key_file.open("r", encoding="utf-8") as handle:
+                val = handle.read().strip()
+                if val and not val.startswith("YOUR_"):
+                    return val
+        except Exception:
+            pass
+
     return None
 
 

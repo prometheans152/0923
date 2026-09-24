@@ -3,6 +3,8 @@
 .env.local
 .env.*.local
 !.env.example
+api_key.txt
+*api_key*
 
 # Python
 __pycache__/
