@@ -46,7 +46,7 @@ def connect_readonly(db_path: Path | str) -> sqlite3.Connection:
 
 
 def init_db(db_path: Path | str) -> None:
-    """Initialize SQLite tables: metadata, observations, and snapshots."""
+    """Initialize SQLite tables: metadata, observations, snapshots, and TemperatureForecasts."""
     with connect(db_path) as conn:
         conn.executescript(
             """
@@ -103,6 +103,26 @@ def init_db(db_path: Path | str) -> None:
                 metadata_json TEXT NOT NULL,
                 ingested_at TEXT NOT NULL,
                 PRIMARY KEY (obs_time, source_mode)
+            );
+
+            CREATE TABLE IF NOT EXISTS TemperatureForecasts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                regionName TEXT NOT NULL,
+                dataDate TEXT NOT NULL,
+                mint REAL,
+                maxt REAL,
+                UNIQUE(regionName, dataDate)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_forecasts_region
+                ON TemperatureForecasts(regionName);
+
+            CREATE TABLE IF NOT EXISTS forecast_metadata (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                source TEXT NOT NULL,
+                source_dataset TEXT NOT NULL,
+                build_mode TEXT NOT NULL,
+                generated_at TEXT
             );
             """
         )
@@ -400,6 +420,190 @@ def payload_from_db(db_path: Path | str) -> Dict[str, Any]:
     }
 
     return {"metadata": metadata, "stations": stations}
+
+
+COURSE_REGIONS: List[str] = [
+    "北部地區",
+    "中部地區",
+    "南部地區",
+    "東北部地區",
+    "東部地區",
+    "東南部地區",
+]
+
+
+def upsert_forecast_rows(
+    db_path: Path | str,
+    rows: List[Dict[str, Any]],
+    replace: bool = False,
+) -> int:
+    """
+    Persist normalized forecast rows into TemperatureForecasts table.
+    When replace=True, removes existing forecast records.
+    Uses UNIQUE(regionName, dataDate) to update existing rows on conflict.
+    """
+    init_db(db_path)
+    tuples = []
+    for r in rows:
+        reg = str(r.get("regionName") or "").strip()
+        dt = str(r.get("dataDate") or "").strip()
+        if not reg or not dt:
+            continue
+        tuples.append((reg, dt, r.get("mint"), r.get("maxt")))
+
+    with connect(db_path) as conn:
+        if replace:
+            conn.execute("DELETE FROM TemperatureForecasts")
+        conn.executemany(
+            """
+            INSERT INTO TemperatureForecasts (regionName, dataDate, mint, maxt)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(regionName, dataDate) DO UPDATE SET
+                mint = excluded.mint,
+                maxt = excluded.maxt
+            """,
+            tuples,
+        )
+    return len(tuples)
+
+
+def upsert_forecast_payload(
+    db_path: Path | str,
+    payload: Dict[str, Any],
+    replace: bool = False,
+) -> int:
+    """Persist a normalized forecast payload dictionary into SQLite."""
+    init_db(db_path)
+    rows = payload.get("forecasts") or payload.get("rows") or []
+    count = upsert_forecast_rows(db_path, rows, replace=replace)
+
+    metadata = payload.get("metadata") or {}
+    source = metadata.get("source") or "CWA F-C0032-003 (一般天氣預報-七天天氣預報)"
+    source_dataset = metadata.get("source_dataset") or "F-C0032-003"
+    build_mode = metadata.get("build_mode") or "live_cwa_api"
+    gen_at = metadata.get("generated_at") or ""
+
+    with connect(db_path) as conn:
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO forecast_metadata (id, source, source_dataset, build_mode, generated_at)
+            VALUES (1, ?, ?, ?, ?)
+            """,
+            (source, source_dataset, build_mode, gen_at),
+        )
+    return count
+
+
+def forecast_row_count(db_path: Path | str) -> int:
+    """Return total number of rows in TemperatureForecasts table."""
+    init_db(db_path)
+    with connect_readonly(db_path) as conn:
+        row = conn.execute("SELECT COUNT(*) FROM TemperatureForecasts").fetchone()
+        return int(row[0]) if row else 0
+
+
+def list_forecast_regions(db_path: Path | str) -> List[str]:
+    """Return distinct region names present in TemperatureForecasts, in course order."""
+    init_db(db_path)
+    with connect_readonly(db_path) as conn:
+        rows = conn.execute(
+            "SELECT DISTINCT regionName FROM TemperatureForecasts"
+        ).fetchall()
+    found = [r["regionName"] for r in rows if r["regionName"]]
+    return sorted(
+        found,
+        key=lambda name: COURSE_REGIONS.index(name) if name in COURSE_REGIONS else 999,
+    )
+
+
+def query_forecast_rows(
+    db_path: Path | str,
+    region: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """Query forecast rows, optionally filtered by regionName."""
+    init_db(db_path)
+    with connect_readonly(db_path) as conn:
+        if region:
+            db_rows = conn.execute(
+                """
+                SELECT id, regionName, dataDate, mint, maxt
+                FROM TemperatureForecasts
+                WHERE regionName = ?
+                ORDER BY dataDate ASC
+                """,
+                (region,),
+            ).fetchall()
+        else:
+            db_rows = conn.execute(
+                """
+                SELECT id, regionName, dataDate, mint, maxt
+                FROM TemperatureForecasts
+                ORDER BY regionName ASC, dataDate ASC
+                """
+            ).fetchall()
+
+    results = [
+        {
+            "id": r["id"],
+            "regionName": r["regionName"],
+            "dataDate": r["dataDate"],
+            "mint": r["mint"],
+            "maxt": r["maxt"],
+        }
+        for r in db_rows
+    ]
+    if not region:
+        results.sort(
+            key=lambda item: (
+                COURSE_REGIONS.index(item["regionName"])
+                if item["regionName"] in COURSE_REGIONS
+                else 999,
+                item["dataDate"],
+            )
+        )
+    return results
+
+
+def forecast_payload_from_db(
+    db_path: Path | str,
+    region: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Reconstruct complete forecast payload directly from SQLite."""
+    init_db(db_path)
+    regions = list_forecast_regions(db_path)
+    rows = query_forecast_rows(db_path, region=region)
+
+    source = "CWA F-C0032-003 (一般天氣預報-七天天氣預報)"
+    source_dataset = "F-C0032-003"
+    build_mode = "sqlite"
+    gen_at = ""
+
+    with connect_readonly(db_path) as conn:
+        meta_row = conn.execute(
+            "SELECT * FROM forecast_metadata WHERE id = 1"
+        ).fetchone()
+        if meta_row:
+            source = meta_row["source"] or source
+            source_dataset = meta_row["source_dataset"] or source_dataset
+            build_mode = meta_row["build_mode"] or build_mode
+            gen_at = meta_row["generated_at"] or ""
+
+    return {
+        "metadata": {
+            "source": source,
+            "source_dataset": source_dataset,
+            "build_mode": build_mode,
+            "generated_at": gen_at,
+            "region": region,
+            "regions": regions,
+            "total_records": len(rows),
+            "storage": "sqlite",
+        },
+        "region": region,
+        "regions": regions,
+        "forecasts": rows,
+        "rows": rows,
+    }
 
 
 def verify_database(db_path: Path | str, county: str = "新竹縣", limit: int = 3) -> None:

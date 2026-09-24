@@ -17,6 +17,11 @@ const state = {
   autoRefreshInterval: null,
   countdownSeconds: 300,
   countdownInterval: null,
+  // 7-Day Forecast State (Micro Task 3)
+  forecastData: null,
+  selectedForecastRegion: '北部地區',
+  selectedForecastDate: '',
+  forecastSourceMode: '',
 };
 if (typeof window !== 'undefined') {
   window.state = state;
@@ -57,6 +62,21 @@ const elements = {
   btnResetView: document.getElementById('btn-reset-view'),
   btnLocateMe: document.getElementById('btn-locate-me'),
   autoRefreshTimer: document.getElementById('auto-refresh-timer'),
+  // 7-Day Forecast Elements (Micro Task 3)
+  btnToggleForecast: document.getElementById('btn-toggle-forecast'),
+  forecastPanel: document.getElementById('forecast-panel'),
+  btnCloseForecast: document.getElementById('btn-close-forecast'),
+  forecastModeBadge: document.getElementById('forecast-mode-badge'),
+  forecastRegionSelect: document.getElementById('forecast-region-select'),
+  forecastDateSelect: document.getElementById('forecast-date-select'),
+  summaryRegionLabel: document.getElementById('summary-region-label'),
+  summaryDateLabel: document.getElementById('summary-date-label'),
+  summaryMintVal: document.getElementById('summary-mint-val'),
+  summaryMaxtVal: document.getElementById('summary-maxt-val'),
+  forecastChart: document.getElementById('forecast-chart'),
+  forecastTableBody: document.getElementById('forecast-table-body'),
+  forecastMetaSource: document.getElementById('forecast-meta-source'),
+  forecastMetaMode: document.getElementById('forecast-meta-mode'),
   // Metrics
   metricTotalStations: document.getElementById('metric-total-stations'),
   metricMaxTemp: document.getElementById('metric-max-temp'),
@@ -634,6 +654,436 @@ function showToast(msg, duration = 3000) {
   }, duration);
 }
 
+/* ==========================================================================
+   7-Day Regional Temperature Forecast Implementation (Micro Task 3)
+   ========================================================================== */
+
+/**
+ * Normalizes raw F-A0010-001 fixture if loaded directly
+ */
+function normalizeRawForecastFixture(raw) {
+  try {
+    if (!raw) return null;
+    if (raw.forecasts || raw.rows) return raw;
+    const locations =
+      raw?.cwaopendata?.resources?.resource?.data?.agrWeatherForecasts?.weatherForecasts?.location || [];
+    const rows = [];
+    const regions = [];
+    for (const loc of locations) {
+      const regionName = loc.locationName;
+      if (regionName && !regions.includes(regionName)) {
+        regions.push(regionName);
+      }
+      const maxList = loc.weatherElements?.MaxT?.daily || [];
+      const minList = loc.weatherElements?.MinT?.daily || [];
+      const minMap = {};
+      for (const m of minList) {
+        if (m.dataDate) minMap[m.dataDate] = parseFloat(m.temperature);
+      }
+      for (const m of maxList) {
+        const d = m.dataDate;
+        rows.push({
+          regionName,
+          dataDate: d,
+          mint: minMap[d] !== undefined ? minMap[d] : null,
+          maxt: parseFloat(m.temperature),
+        });
+      }
+    }
+    return {
+      metadata: {
+        source: 'CWA F-A0010-001 (Fixture)',
+        source_dataset: 'F-A0010-001',
+        build_mode: 'fallback_fixture',
+        total_regions: regions.length,
+        total_records: rows.length,
+        regions: regions,
+      },
+      regions: regions,
+      rows: rows,
+      forecasts: rows,
+    };
+  } catch (err) {
+    console.error('Error normalizing raw forecast fixture:', err);
+    return null;
+  }
+}
+
+/**
+ * Format date string with weekday in Traditional Chinese: "YYYY-MM-DD (週X)"
+ */
+function formatForecastDate(dateStr) {
+  if (!dateStr) return '--';
+  try {
+    const parts = dateStr.split('-');
+    if (parts.length === 3) {
+      const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+      const days = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'];
+      const dayName = days[d.getDay()];
+      return `${dateStr} (${dayName})`;
+    }
+    return dateStr;
+  } catch {
+    return dateStr;
+  }
+}
+
+/**
+ * Fetch 7-Day forecast data with 3-tier cascade:
+ * 1. /api/forecast (SQLite-backed)
+ * 2. ./data/forecast.json (static fallback for GitHub Pages)
+ * 3. ./data/forecast_fixture.json (offline fallback fixture)
+ */
+async function loadForecastData() {
+  if (elements.forecastModeBadge) {
+    elements.forecastModeBadge.textContent = '載入中...';
+    elements.forecastModeBadge.style.background = 'rgba(148, 163, 184, 0.2)';
+    elements.forecastModeBadge.style.color = '#94a3b8';
+  }
+
+  const stamp = Date.now();
+  let payload = null;
+  let sourceMode = 'unknown';
+
+  try {
+    const apiRes = await fetch(`/api/forecast?t=${stamp}`, { cache: 'no-store' });
+    if (!apiRes.ok) throw new Error(`HTTP ${apiRes.status}`);
+    payload = await apiRes.json();
+    sourceMode = 'live_api';
+  } catch (apiErr) {
+    console.warn('[WARN] Forecast API unavailable; trying static forecast.json:', apiErr);
+    try {
+      const jsonRes = await fetch(`./data/forecast.json?t=${stamp}`, { cache: 'no-store' });
+      if (!jsonRes.ok) throw new Error(`HTTP ${jsonRes.status}`);
+      payload = await jsonRes.json();
+      sourceMode = 'static_json';
+    } catch (jsonErr) {
+      console.warn('[WARN] forecast.json unavailable; trying bundled forecast_fixture.json:', jsonErr);
+      try {
+        const fixRes = await fetch('./data/forecast_fixture.json', { cache: 'no-store' });
+        if (fixRes.ok) {
+          const raw = await fixRes.json();
+          payload = normalizeRawForecastFixture(raw);
+          sourceMode = 'fixture';
+        }
+      } catch (fixErr) {
+        console.error('[ERROR] All forecast sources failed:', fixErr);
+      }
+    }
+  }
+
+  if (!payload || (!payload.forecasts && !payload.rows)) {
+    if (elements.forecastModeBadge) {
+      elements.forecastModeBadge.textContent = '載入失敗';
+      elements.forecastModeBadge.style.background = 'rgba(239, 68, 68, 0.2)';
+      elements.forecastModeBadge.style.color = '#f87171';
+    }
+    if (elements.forecastTableBody) {
+      elements.forecastTableBody.innerHTML =
+        '<tr><td colspan="3" style="text-align: center; color: #f87171;">無法讀取預報資料</td></tr>';
+    }
+    return;
+  }
+
+  state.forecastData = payload;
+  state.forecastSourceMode = sourceMode;
+
+  updateForecastMetadata();
+  populateForecastRegionsDropdown();
+  updateForecastUI();
+}
+
+/**
+ * Display source dataset and operation mode
+ */
+function updateForecastMetadata() {
+  const meta = state.forecastData?.metadata || {};
+  const mode = state.forecastSourceMode;
+
+  if (elements.forecastModeBadge) {
+    if (mode === 'live_api') {
+      elements.forecastModeBadge.textContent = '即時連線 (Live API)';
+      elements.forecastModeBadge.style.background = 'rgba(16, 185, 129, 0.2)';
+      elements.forecastModeBadge.style.color = '#34d399';
+    } else if (mode === 'static_json') {
+      const isLive = meta.build_mode === 'live_cwa_api';
+      elements.forecastModeBadge.textContent = isLive ? '靜態同步 (Live Snapshot)' : '靜態備援';
+      elements.forecastModeBadge.style.background = 'rgba(6, 182, 212, 0.2)';
+      elements.forecastModeBadge.style.color = '#22d3ee';
+    } else {
+      elements.forecastModeBadge.textContent = '備援資料 (Fixture)';
+      elements.forecastModeBadge.style.background = 'rgba(245, 158, 11, 0.2)';
+      elements.forecastModeBadge.style.color = '#fbbf24';
+    }
+  }
+
+  if (elements.forecastMetaSource) {
+    elements.forecastMetaSource.textContent = meta.source || meta.source_dataset || '中央氣象署 F-C0032-003';
+  }
+
+  if (elements.forecastMetaMode) {
+    const rawMode = meta.build_mode || mode;
+    elements.forecastMetaMode.textContent = rawMode;
+  }
+}
+
+/**
+ * Populate forecast regions selector
+ */
+function populateForecastRegionsDropdown() {
+  const defaultRegions = ['北部地區', '中部地區', '南部地區', '東北部地區', '東部地區', '東南部地區'];
+  const regions = state.forecastData?.regions || defaultRegions;
+
+  if (!elements.forecastRegionSelect) return;
+
+  const currentVal = elements.forecastRegionSelect.value || state.selectedForecastRegion;
+  elements.forecastRegionSelect.innerHTML = '';
+  for (const r of regions) {
+    const opt = document.createElement('option');
+    opt.value = r;
+    opt.textContent = r;
+    elements.forecastRegionSelect.appendChild(opt);
+  }
+
+  if (regions.includes(currentVal)) {
+    elements.forecastRegionSelect.value = currentVal;
+    state.selectedForecastRegion = currentVal;
+  } else if (regions.length > 0) {
+    elements.forecastRegionSelect.value = regions[0];
+    state.selectedForecastRegion = regions[0];
+  }
+}
+
+/**
+ * Filter 7-day rows for current region
+ */
+function getForecastRowsForRegion(regionName) {
+  const allRows = state.forecastData?.rows || state.forecastData?.forecasts || [];
+  return allRows
+    .filter((r) => r.regionName === regionName)
+    .sort((a, b) => a.dataDate.localeCompare(b.dataDate));
+}
+
+/**
+ * Update UI for forecast: date selector, summary card, chart, and table
+ */
+function updateForecastUI() {
+  const rows = getForecastRowsForRegion(state.selectedForecastRegion);
+  if (!rows || rows.length === 0) {
+    if (elements.forecastTableBody) {
+      elements.forecastTableBody.innerHTML =
+        '<tr><td colspan="3" style="text-align: center; color: var(--text-dim);">此地區無預報資料</td></tr>';
+    }
+    return;
+  }
+
+  // Ensure selected date exists in rows
+  const availableDates = rows.map((r) => r.dataDate);
+  if (!state.selectedForecastDate || !availableDates.includes(state.selectedForecastDate)) {
+    state.selectedForecastDate = availableDates[0];
+  }
+
+  // Update date selector
+  if (elements.forecastDateSelect) {
+    elements.forecastDateSelect.innerHTML = '';
+    for (const r of rows) {
+      const opt = document.createElement('option');
+      opt.value = r.dataDate;
+      opt.textContent = formatForecastDate(r.dataDate);
+      elements.forecastDateSelect.appendChild(opt);
+    }
+    elements.forecastDateSelect.value = state.selectedForecastDate;
+  }
+
+  // Update Summary Card
+  const selectedRow = rows.find((r) => r.dataDate === state.selectedForecastDate) || rows[0];
+  if (selectedRow) {
+    if (elements.summaryRegionLabel) elements.summaryRegionLabel.textContent = selectedRow.regionName;
+    if (elements.summaryDateLabel) elements.summaryDateLabel.textContent = formatForecastDate(selectedRow.dataDate);
+    if (elements.summaryMintVal) {
+      elements.summaryMintVal.textContent = selectedRow.mint !== null ? Math.round(selectedRow.mint) : '--';
+    }
+    if (elements.summaryMaxtVal) {
+      elements.summaryMaxtVal.textContent = selectedRow.maxt !== null ? Math.round(selectedRow.maxt) : '--';
+    }
+  }
+
+  // Render Table & Chart
+  renderForecastTable(rows, state.selectedForecastDate);
+  renderForecastChart(rows, state.selectedForecastDate);
+}
+
+/**
+ * Select a forecast date and refresh views
+ */
+function selectForecastDate(dateStr) {
+  state.selectedForecastDate = dateStr;
+  if (elements.forecastDateSelect) {
+    elements.forecastDateSelect.value = dateStr;
+  }
+  updateForecastUI();
+}
+
+/**
+ * Render 7-Day Forecast Table
+ */
+function renderForecastTable(rows, selectedDate) {
+  if (!elements.forecastTableBody) return;
+
+  elements.forecastTableBody.innerHTML = '';
+  for (const r of rows) {
+    const tr = document.createElement('tr');
+    const isSelected = r.dataDate === selectedDate;
+    if (isSelected) tr.classList.add('selected');
+
+    const mintDisplay = r.mint !== null ? `<span style="color: #60a5fa; font-weight: 700;">${Math.round(r.mint)}°C</span>` : '--';
+    const maxtDisplay = r.maxt !== null ? `<span style="color: #f87171; font-weight: 700;">${Math.round(r.maxt)}°C</span>` : '--';
+
+    tr.innerHTML = `
+      <td>${formatForecastDate(r.dataDate)}</td>
+      <td>${mintDisplay}</td>
+      <td>${maxtDisplay}</td>
+    `;
+
+    tr.addEventListener('click', () => {
+      selectForecastDate(r.dataDate);
+    });
+
+    elements.forecastTableBody.appendChild(tr);
+  }
+}
+
+/**
+ * Render Native SVG 7-Day Temperature Line Chart
+ */
+function renderForecastChart(rows, selectedDate) {
+  const svg = elements.forecastChart;
+  if (!svg || rows.length === 0) return;
+
+  const width = 320;
+  const height = 150;
+  const padLeft = 32;
+  const padRight = 20;
+  const padTop = 22;
+  const padBottom = 26;
+  const chartW = width - padLeft - padRight;
+  const chartH = height - padTop - padBottom;
+
+  const allTemps = [];
+  rows.forEach((r) => {
+    if (r.mint !== null && !isNaN(r.mint)) allTemps.push(r.mint);
+    if (r.maxt !== null && !isNaN(r.maxt)) allTemps.push(r.maxt);
+  });
+
+  let minT = allTemps.length > 0 ? Math.min(...allTemps) : 15;
+  let maxT = allTemps.length > 0 ? Math.max(...allTemps) : 35;
+  minT = Math.floor(minT - 2);
+  maxT = Math.ceil(maxT + 2);
+  if (maxT <= minT) maxT = minT + 8;
+
+  function getX(index) {
+    if (rows.length <= 1) return padLeft + chartW / 2;
+    return padLeft + (index / (rows.length - 1)) * chartW;
+  }
+
+  function getY(temp) {
+    if (temp === null || isNaN(temp)) return padTop + chartH;
+    return padTop + (1 - (temp - minT) / (maxT - minT)) * chartH;
+  }
+
+  let svgContent = '';
+
+  // 1. Subtle horizontal grid lines & temp labels
+  const gridSteps = [minT + 2, Math.round((minT + maxT) / 2), maxT - 2];
+  gridSteps.forEach((stepT) => {
+    const y = getY(stepT);
+    svgContent += `
+      <line x1="${padLeft}" y1="${y}" x2="${width - padRight}" y2="${y}" stroke="rgba(255, 255, 255, 0.08)" stroke-width="1" />
+      <text x="${padLeft - 4}" y="${y + 3}" text-anchor="end" fill="#64748b" font-size="9" font-family="JetBrains Mono, monospace">${stepT}°</text>
+    `;
+  });
+
+  // 2. Selected date highlight column
+  rows.forEach((r, i) => {
+    if (r.dataDate === selectedDate) {
+      const cx = getX(i);
+      svgContent += `
+        <line x1="${cx}" y1="${padTop - 8}" x2="${cx}" y2="${height - padBottom + 2}" stroke="rgba(255, 255, 255, 0.35)" stroke-width="1.5" stroke-dasharray="3 3" />
+      `;
+    }
+  });
+
+  // 3. MaxT and MinT Polylines
+  const maxPoints = rows.map((r, i) => `${getX(i).toFixed(1)},${getY(r.maxt).toFixed(1)}`).join(' ');
+  const minPoints = rows.map((r, i) => `${getX(i).toFixed(1)},${getY(r.mint).toFixed(1)}`).join(' ');
+
+  svgContent += `
+    <polyline fill="none" stroke="#f87171" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" points="${maxPoints}" />
+    <polyline fill="none" stroke="#60a5fa" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" points="${minPoints}" />
+  `;
+
+  // 4. Data points, value badges, and X-axis labels
+  rows.forEach((r, i) => {
+    const cx = getX(i);
+    const yMax = getY(r.maxt);
+    const yMin = getY(r.mint);
+    const isSelected = r.dataDate === selectedDate;
+
+    // Max circle
+    const rMaxRadius = isSelected ? 5.5 : 3.5;
+    const rMaxStroke = isSelected ? '#ffffff' : '#0f172a';
+    const rMaxStrokeW = isSelected ? 2 : 1.5;
+    svgContent += `
+      <circle cx="${cx.toFixed(1)}" cy="${yMax.toFixed(1)}" r="${rMaxRadius}" fill="#f87171" stroke="${rMaxStroke}" stroke-width="${rMaxStrokeW}" />
+    `;
+
+    // Min circle
+    const rMinRadius = isSelected ? 5.5 : 3.5;
+    const rMinStroke = isSelected ? '#ffffff' : '#0f172a';
+    const rMinStrokeW = isSelected ? 2 : 1.5;
+    svgContent += `
+      <circle cx="${cx.toFixed(1)}" cy="${yMin.toFixed(1)}" r="${rMinRadius}" fill="#60a5fa" stroke="${rMinStroke}" stroke-width="${rMinStrokeW}" />
+    `;
+
+    // Text labels for selected point
+    if (isSelected) {
+      if (r.maxt !== null) {
+        svgContent += `
+          <text x="${cx.toFixed(1)}" y="${(yMax - 9).toFixed(1)}" text-anchor="middle" fill="#f87171" font-size="10" font-weight="700" font-family="JetBrains Mono, monospace">${Math.round(r.maxt)}°</text>
+        `;
+      }
+      if (r.mint !== null) {
+        svgContent += `
+          <text x="${cx.toFixed(1)}" y="${(yMin + 16).toFixed(1)}" text-anchor="middle" fill="#60a5fa" font-size="10" font-weight="700" font-family="JetBrains Mono, monospace">${Math.round(r.mint)}°</text>
+        `;
+      }
+    }
+
+    // X-axis date label
+    const shortDate = r.dataDate.slice(5).replace('-', '/');
+    const labelColor = isSelected ? '#ffffff' : '#94a3b8';
+    const labelWeight = isSelected ? '700' : '500';
+    svgContent += `
+      <text x="${cx.toFixed(1)}" y="${height - 8}" text-anchor="middle" fill="${labelColor}" font-weight="${labelWeight}" font-size="9" font-family="Inter, sans-serif">${shortDate}</text>
+    `;
+
+    // Interactive clickable hit area for column
+    svgContent += `
+      <rect x="${(cx - 18).toFixed(1)}" y="${padTop - 10}" width="36" height="${chartH + 30}" fill="transparent" style="cursor: pointer;" data-date="${r.dataDate}" />
+    `;
+  });
+
+  svg.innerHTML = svgContent;
+
+  // Add click handlers on interactive SVG elements
+  svg.querySelectorAll('rect[data-date]').forEach((rect) => {
+    rect.addEventListener('click', (e) => {
+      const d = e.target.getAttribute('data-date');
+      if (d) selectForecastDate(d);
+    });
+  });
+}
+
 /**
  * Bind User Event Listeners
  */
@@ -646,9 +1096,39 @@ function bindEvents() {
     elements.sidebar.classList.add('closed');
   });
 
+  // 7-Day Forecast Panel Toggles
+  if (elements.btnToggleForecast && elements.forecastPanel) {
+    elements.btnToggleForecast.addEventListener('click', () => {
+      elements.forecastPanel.classList.toggle('closed');
+      const isOpen = !elements.forecastPanel.classList.contains('closed');
+      elements.btnToggleForecast.classList.toggle('active', isOpen);
+    });
+  }
+  if (elements.btnCloseForecast && elements.forecastPanel) {
+    elements.btnCloseForecast.addEventListener('click', () => {
+      elements.forecastPanel.classList.add('closed');
+      elements.btnToggleForecast?.classList.remove('active');
+    });
+  }
+
+  // 7-Day Forecast Controls
+  if (elements.forecastRegionSelect) {
+    elements.forecastRegionSelect.addEventListener('change', (e) => {
+      state.selectedForecastRegion = e.target.value;
+      updateForecastUI();
+    });
+  }
+  if (elements.forecastDateSelect) {
+    elements.forecastDateSelect.addEventListener('change', (e) => {
+      state.selectedForecastDate = e.target.value;
+      updateForecastUI();
+    });
+  }
+
   // Refresh
   elements.btnRefresh.addEventListener('click', () => {
     loadData(true);
+    loadForecastData();
   });
 
   // Filter Changes
@@ -726,5 +1206,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupSearch();
   bindEvents();
   loadData(false);
+  loadForecastData();
   window.selectStation = selectStation;
+  window.selectForecastDate = selectForecastDate;
 });

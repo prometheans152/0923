@@ -22,6 +22,10 @@
       "dest": "/api/index.py"
     },
     {
+      "src": "/api/forecast",
+      "dest": "/api/index.py"
+    },
+    {
       "src": "/(.*)",
       "dest": "/api/index.py"
     }

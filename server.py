@@ -9,6 +9,7 @@ from flask import Flask, abort, jsonify, request, send_from_directory
 BASE_DIR = Path(__file__).resolve().parent
 DOCS_DIR = BASE_DIR / "docs"
 SEED_JSON = DOCS_DIR / "data" / "stations.json"
+FORECAST_JSON = DOCS_DIR / "data" / "forecast.json"
 DATA_DB = BASE_DIR / "data.db"
 SCRIPTS_DIR = BASE_DIR / "scripts"
 
@@ -16,11 +17,16 @@ if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
 from database import (
+    forecast_payload_from_db,
+    forecast_row_count,
     init_db,
     latest_observation_time,
+    list_forecast_regions,
     payload_from_db,
+    query_forecast_rows,
     query_sample,
     row_count,
+    upsert_forecast_payload,
     upsert_payload,
 )
 
@@ -37,6 +43,16 @@ def get_db_path() -> Path:
             upsert_payload(DATA_DB, payload, source_mode=mode, replace=True)
         else:
             init_db(DATA_DB)
+
+    init_db(DATA_DB)
+    if forecast_row_count(DATA_DB) == 0 and FORECAST_JSON.exists():
+        try:
+            with FORECAST_JSON.open("r", encoding="utf-8") as handle:
+                f_payload = json.load(handle)
+            upsert_forecast_payload(DATA_DB, f_payload, replace=False)
+        except Exception:
+            pass
+
     return DATA_DB
 
 
@@ -47,6 +63,17 @@ def api_weather():
     payload = payload_from_db(db_path)
     if not payload.get("stations"):
         return jsonify({"error": "SQLite contains no weather observations"}), 503
+    return jsonify(payload)
+
+
+@app.get("/api/forecast")
+def api_forecast():
+    """Return 7-day regional temperature forecasts from SQLite (data.db), optionally filtered by region."""
+    db_path = get_db_path()
+    region = request.args.get("region")
+    if region:
+        region = region.strip()
+    payload = forecast_payload_from_db(db_path, region=region)
     return jsonify(payload)
 
 

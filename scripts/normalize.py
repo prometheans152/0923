@@ -354,3 +354,225 @@ def normalize_geojson_dataset(geo_data: Dict[str, Any]) -> Dict[str, Any]:
         })
 
     return normalize_cwa_dataset({"records": {"Station": raw_stations}})
+
+
+FORECAST_COURSE_REGIONS: List[str] = [
+    "北部地區",
+    "中部地區",
+    "南部地區",
+    "東北部地區",
+    "東部地區",
+    "東南部地區",
+]
+
+
+def normalize_forecast_dataset(raw_data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Transforms CWA forecast payloads into normalized 7-day regional forecast data.
+    Supports both:
+      - Current official F-C0032-003 ("一般天氣預報-七天天氣預報")
+      - Course legacy F-A0010-001 ("一週農業氣象預報") as compatibility parser/reference
+    Output:
+      - Six course regions: 北部地區, 中部地區, 南部地區, 東北部地區, 東部地區, 東南部地區
+      - 7-day rows per region
+      - fields: regionName, dataDate, mint, maxt
+    """
+    region_rows: Dict[str, List[Dict[str, Any]]] = {}
+    source_dataset = "F-A0010-001"
+    source_title = "CWA F-A0010-001 (一週農業氣象預報)"
+
+    cwa = raw_data.get("cwaopendata", {}) if isinstance(raw_data, dict) else {}
+    data_id = str(
+        cwa.get("Dataid")
+        or cwa.get("dataid")
+        or raw_data.get("Dataid")
+        or raw_data.get("dataid")
+        or ""
+    )
+    is_c0032 = (
+        "C0032-003" in data_id
+        or ("Dataset" in cwa and "Locations" in cwa.get("Dataset", {}))
+        or ("Dataset" in raw_data and "Locations" in raw_data.get("Dataset", {}))
+    )
+
+    if is_c0032:
+        source_dataset = "F-C0032-003"
+        source_title = "CWA F-C0032-003 (一般天氣預報-七天天氣預報)"
+        dataset_obj = cwa.get("Dataset") or raw_data.get("Dataset") or {}
+        loc_list = dataset_obj.get("Locations", {}).get("Location", [])
+
+        for loc in loc_list:
+            if not isinstance(loc, dict):
+                continue
+            reg_name = str(loc.get("LocationName") or "").strip()
+            if reg_name not in FORECAST_COURSE_REGIONS:
+                continue
+
+            we_elements = loc.get("WeatherElement", [])
+            maxt_by_date: Dict[str, Optional[float]] = {}
+            mint_by_date: Dict[str, Optional[float]] = {}
+
+            for elem in we_elements:
+                elem_name = str(elem.get("ElementName") or "").strip()
+                time_list = elem.get("Time", [])
+                if elem_name == "最高溫度":
+                    for t in time_list:
+                        dt = str(t.get("StartTime", ""))[:10].strip()
+                        val = clean_number(t.get("ElementValue", {}).get("MaxTemperature"))
+                        if dt:
+                            maxt_by_date[dt] = val
+                elif elem_name == "最低溫度":
+                    for t in time_list:
+                        dt = str(t.get("StartTime", ""))[:10].strip()
+                        val = clean_number(t.get("ElementValue", {}).get("MinTemperature"))
+                        if dt:
+                            mint_by_date[dt] = val
+
+            all_dates = sorted(set(maxt_by_date.keys()) | set(mint_by_date.keys()))
+            rows_for_region: List[Dict[str, Any]] = []
+            for dt in all_dates:
+                rows_for_region.append({
+                    "regionName": reg_name,
+                    "dataDate": dt,
+                    "mint": mint_by_date.get(dt),
+                    "maxt": maxt_by_date.get(dt),
+                })
+            region_rows[reg_name] = rows_for_region
+    else:
+        # Legacy F-A0010-001 parser
+        source_dataset = "F-A0010-001"
+        source_title = "CWA F-A0010-001 (一週農業氣象預報)"
+        locations: List[Dict[str, Any]] = []
+
+        if isinstance(raw_data, dict):
+            if "cwaopendata" in raw_data:
+                res = raw_data["cwaopendata"].get("resources", {}).get("resource", {})
+                if isinstance(res, list):
+                    res = res[0] if res else {}
+                locations = (
+                    res.get("data", {})
+                    .get("agrWeatherForecasts", {})
+                    .get("weatherForecasts", {})
+                    .get("location", [])
+                )
+            elif "records" in raw_data:
+                rec = raw_data["records"]
+                if "resources" in rec:
+                    res = rec.get("resources", {}).get("resource", {})
+                    if isinstance(res, list):
+                        res = res[0] if res else {}
+                    locations = (
+                        res.get("data", {})
+                        .get("agrWeatherForecasts", {})
+                        .get("weatherForecasts", {})
+                        .get("location", [])
+                    )
+                elif "agrWeatherForecasts" in rec:
+                    locations = (
+                        rec.get("agrWeatherForecasts", {})
+                        .get("weatherForecasts", {})
+                        .get("location", [])
+                    )
+                elif "weatherForecasts" in rec:
+                    locations = rec.get("weatherForecasts", {}).get("location", [])
+                elif "location" in rec:
+                    locations = rec.get("location", [])
+            elif "agrWeatherForecasts" in raw_data:
+                locations = (
+                    raw_data.get("agrWeatherForecasts", {})
+                    .get("weatherForecasts", {})
+                    .get("location", [])
+                )
+            elif "weatherForecasts" in raw_data:
+                locations = raw_data.get("weatherForecasts", {}).get("location", [])
+            elif "location" in raw_data:
+                locations = raw_data.get("location", [])
+
+        if not locations and isinstance(raw_data, dict):
+            def _find_locations(node: Any) -> List[Dict[str, Any]]:
+                if isinstance(node, dict):
+                    if "location" in node and isinstance(node["location"], list):
+                        return node["location"]
+                    for val in node.values():
+                        found = _find_locations(val)
+                        if found:
+                            return found
+                return []
+            locations = _find_locations(raw_data)
+
+        for loc in locations:
+            if not isinstance(loc, dict):
+                continue
+            reg_name = str(
+                loc.get("locationName")
+                or loc.get("location_name")
+                or loc.get("regionName")
+                or ""
+            ).strip()
+            if not reg_name:
+                continue
+
+            we = loc.get("weatherElements") or loc.get("weatherElement") or {}
+            if isinstance(we, list):
+                we_map: Dict[str, Any] = {}
+                for item in we:
+                    if isinstance(item, dict):
+                        name = item.get("elementName") or item.get("tagName") or item.get("name")
+                        if name:
+                            we_map[name] = item
+                we = we_map
+
+            mint_obj = we.get("MinT") or we.get("minT") or we.get("mint") or {}
+            maxt_obj = we.get("MaxT") or we.get("maxT") or we.get("maxt") or {}
+
+            mint_daily = mint_obj.get("daily", []) if isinstance(mint_obj, dict) else []
+            maxt_daily = maxt_obj.get("daily", []) if isinstance(maxt_obj, dict) else []
+
+            mint_by_date: Dict[str, Optional[float]] = {}
+            for d in mint_daily:
+                if isinstance(d, dict) and "dataDate" in d:
+                    dt = str(d["dataDate"]).strip()
+                    mint_by_date[dt] = clean_number(d.get("temperature"))
+
+            maxt_by_date: Dict[str, Optional[float]] = {}
+            for d in maxt_daily:
+                if isinstance(d, dict) and "dataDate" in d:
+                    dt = str(d["dataDate"]).strip()
+                    maxt_by_date[dt] = clean_number(d.get("temperature"))
+
+            all_dates = sorted(set(mint_by_date.keys()) | set(maxt_by_date.keys()))
+            rows_for_region: List[Dict[str, Any]] = []
+            for dt in all_dates:
+                rows_for_region.append({
+                    "regionName": reg_name,
+                    "dataDate": dt,
+                    "mint": mint_by_date.get(dt),
+                    "maxt": maxt_by_date.get(dt),
+                })
+            region_rows[reg_name] = rows_for_region
+
+    # Order regions according to the six course regions
+    ordered_course = [r for r in FORECAST_COURSE_REGIONS if r in region_rows]
+    extra = sorted([r for r in region_rows if r not in FORECAST_COURSE_REGIONS])
+    final_regions = ordered_course + extra
+
+    all_rows: List[Dict[str, Any]] = []
+    for reg in final_regions:
+        all_rows.extend(region_rows[reg])
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    return {
+        "metadata": {
+            "source": source_title,
+            "source_dataset": source_dataset,
+            "generated_at": now_iso,
+            "total_regions": len(final_regions),
+            "total_records": len(all_rows),
+            "regions": final_regions,
+            "build_mode": "normalized",
+        },
+        "regions": final_regions,
+        "forecasts": all_rows,
+        "rows": all_rows,
+    }
+

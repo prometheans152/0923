@@ -57,6 +57,10 @@
 
       <!-- Header Action Controls -->
       <div class="header-actions">
+        <button id="btn-toggle-forecast" class="btn btn-secondary active" title="開啟/收合 7 日氣溫預報">
+          <span class="icon">📅</span>
+          <span class="text">7 日天氣預報</span>
+        </button>
         <button id="btn-refresh" class="btn btn-primary" title="重新載入即時測站資料">
           <span class="icon">↻</span>
           <span class="text">重新整理</span>
@@ -66,6 +70,106 @@
         </button>
       </div>
     </header>
+
+    <!-- 7-Day Regional Temperature Forecast Panel (Micro Task 3) -->
+    <section id="forecast-panel" class="forecast-panel" aria-label="7 日天氣預報">
+      <div class="forecast-header">
+        <div class="forecast-title-group">
+          <h2>7 日天氣預報</h2>
+          <span id="forecast-mode-badge" class="sync-badge">載入中...</span>
+        </div>
+        <button id="btn-close-forecast" class="btn-close" aria-label="關閉預報面板">✕</button>
+      </div>
+
+      <div class="forecast-content">
+        <!-- Region Selector -->
+        <div class="control-group">
+          <label for="forecast-region-select">選擇預報地區</label>
+          <select id="forecast-region-select" class="custom-select">
+            <option value="北部地區">北部地區</option>
+            <option value="中部地區">中部地區</option>
+            <option value="南部地區">南部地區</option>
+            <option value="東北部地區">東北部地區</option>
+            <option value="東部地區">東部地區</option>
+            <option value="東南部地區">東南部地區</option>
+          </select>
+        </div>
+
+        <!-- Date Selector -->
+        <div class="control-group">
+          <label for="forecast-date-select">選擇預報日期</label>
+          <select id="forecast-date-select" class="custom-select">
+            <option value="">載入日期中...</option>
+          </select>
+        </div>
+
+        <!-- Selected Date Summary -->
+        <div id="forecast-summary-card" class="forecast-summary-card">
+          <div class="forecast-summary-header">
+            <span id="summary-region-label" class="summary-region">北部地區</span>
+            <span id="summary-date-label" class="summary-date">----/--/--</span>
+          </div>
+          <div class="forecast-summary-values">
+            <div class="summary-temp-item">
+              <span class="summary-label">最低溫</span>
+              <span id="summary-mint-val" class="summary-mint-val">--</span>
+              <span class="summary-unit">°C</span>
+            </div>
+            <span class="summary-divider">~</span>
+            <div class="summary-temp-item">
+              <span class="summary-label">最高溫</span>
+              <span id="summary-maxt-val" class="summary-maxt-val">--</span>
+              <span class="summary-unit">°C</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Native SVG Temperature Trend Chart -->
+        <div class="control-group">
+          <div class="chart-header">
+            <label>7 日氣溫趨勢 (°C)</label>
+            <div class="chart-legend">
+              <span class="legend-dot mint-dot"></span><span>最低溫</span>
+              <span class="legend-dot maxt-dot"></span><span>最高溫</span>
+            </div>
+          </div>
+          <div class="forecast-chart-container">
+            <svg id="forecast-chart" class="forecast-chart" viewBox="0 0 320 150" role="img" aria-label="7日氣溫曲線圖"></svg>
+          </div>
+        </div>
+
+        <!-- 7-Day Data Table -->
+        <div class="control-group">
+          <label>7 日氣溫預報數據表</label>
+          <div class="forecast-table-wrapper">
+            <table class="forecast-table" id="forecast-table">
+              <thead>
+                <tr>
+                  <th>預報日期</th>
+                  <th>最低溫 (MinT)</th>
+                  <th>最高溫 (MaxT)</th>
+                </tr>
+              </thead>
+              <tbody id="forecast-table-body">
+                <tr><td colspan="3" style="text-align: center; color: var(--text-dim);">載入資料中...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Forecast Metadata Footer -->
+        <div class="forecast-footer">
+          <div class="meta-row">
+            <span class="meta-label">資料來源：</span>
+            <span id="forecast-meta-source" class="meta-value">--</span>
+          </div>
+          <div class="meta-row">
+            <span class="meta-label">運作模式：</span>
+            <span id="forecast-meta-mode" class="meta-badge">--</span>
+          </div>
+        </div>
+      </div>
+    </section>
 
     <!-- Floating Filter & Search Sidebar (AirBox inspired control panel) -->
     <aside id="sidebar" class="sidebar">

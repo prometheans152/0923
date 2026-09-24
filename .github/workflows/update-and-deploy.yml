@@ -1,8 +1,8 @@
-name: Update CWA Station Data and Deploy to GitHub Pages
+name: Update CWA Station & Forecast Data and Deploy to GitHub Pages
 
 on:
   schedule:
-    # Run every 30 minutes to fetch latest weather observations
+    # Run every 30 minutes to fetch latest weather observations and 7-day regional forecast
     - cron: '*/30 * * * *'
   push:
     branches:
@@ -38,7 +38,7 @@ jobs:
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-      - name: Fetch live CWA dataset and regenerate stations.json and data.db
+      - name: Fetch live CWA datasets (O-A0003-001 & F-C0032-003) and regenerate stations.json, forecast.json, and data.db
         env:
           CWA_API_KEY: ${{ secrets.CWA_API_KEY }}
         run: |

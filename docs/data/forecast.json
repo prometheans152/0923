@@ -1,0 +1,535 @@
+{
+  "metadata": {
+    "source": "CWA F-C0032-003 (一般天氣預報-七天天氣預報)",
+    "source_dataset": "F-C0032-003",
+    "generated_at": "2026-09-24T18:20:43.603896+00:00",
+    "total_regions": 6,
+    "total_records": 42,
+    "regions": [
+      "北部地區",
+      "中部地區",
+      "南部地區",
+      "東北部地區",
+      "東部地區",
+      "東南部地區"
+    ],
+    "build_mode": "live_cwa_api",
+    "storage": "sqlite"
+  },
+  "regions": [
+    "北部地區",
+    "中部地區",
+    "南部地區",
+    "東北部地區",
+    "東部地區",
+    "東南部地區"
+  ],
+  "forecasts": [
+    {
+      "regionName": "北部地區",
+      "dataDate": "2026-09-25",
+      "mint": 22.0,
+      "maxt": 34.0
+    },
+    {
+      "regionName": "北部地區",
+      "dataDate": "2026-09-26",
+      "mint": 23.0,
+      "maxt": 34.0
+    },
+    {
+      "regionName": "北部地區",
+      "dataDate": "2026-09-27",
+      "mint": 22.0,
+      "maxt": 34.0
+    },
+    {
+      "regionName": "北部地區",
+      "dataDate": "2026-09-28",
+      "mint": 23.0,
+      "maxt": 34.0
+    },
+    {
+      "regionName": "北部地區",
+      "dataDate": "2026-09-29",
+      "mint": 23.0,
+      "maxt": 35.0
+    },
+    {
+      "regionName": "北部地區",
+      "dataDate": "2026-09-30",
+      "mint": 23.0,
+      "maxt": 35.0
+    },
+    {
+      "regionName": "北部地區",
+      "dataDate": "2026-10-01",
+      "mint": 23.0,
+      "maxt": 30.0
+    },
+    {
+      "regionName": "中部地區",
+      "dataDate": "2026-09-25",
+      "mint": 24.0,
+      "maxt": 34.0
+    },
+    {
+      "regionName": "中部地區",
+      "dataDate": "2026-09-26",
+      "mint": 24.0,
+      "maxt": 33.0
+    },
+    {
+      "regionName": "中部地區",
+      "dataDate": "2026-09-27",
+      "mint": 24.0,
+      "maxt": 34.0
+    },
+    {
+      "regionName": "中部地區",
+      "dataDate": "2026-09-28",
+      "mint": 24.0,
+      "maxt": 34.0
+    },
+    {
+      "regionName": "中部地區",
+      "dataDate": "2026-09-29",
+      "mint": 24.0,
+      "maxt": 34.0
+    },
+    {
+      "regionName": "中部地區",
+      "dataDate": "2026-09-30",
+      "mint": 25.0,
+      "maxt": 34.0
+    },
+    {
+      "regionName": "中部地區",
+      "dataDate": "2026-10-01",
+      "mint": 24.0,
+      "maxt": 32.0
+    },
+    {
+      "regionName": "南部地區",
+      "dataDate": "2026-09-25",
+      "mint": 26.0,
+      "maxt": 33.0
+    },
+    {
+      "regionName": "南部地區",
+      "dataDate": "2026-09-26",
+      "mint": 26.0,
+      "maxt": 34.0
+    },
+    {
+      "regionName": "南部地區",
+      "dataDate": "2026-09-27",
+      "mint": 25.0,
+      "maxt": 34.0
+    },
+    {
+      "regionName": "南部地區",
+      "dataDate": "2026-09-28",
+      "mint": 26.0,
+      "maxt": 34.0
+    },
+    {
+      "regionName": "南部地區",
+      "dataDate": "2026-09-29",
+      "mint": 26.0,
+      "maxt": 33.0
+    },
+    {
+      "regionName": "南部地區",
+      "dataDate": "2026-09-30",
+      "mint": 26.0,
+      "maxt": 33.0
+    },
+    {
+      "regionName": "南部地區",
+      "dataDate": "2026-10-01",
+      "mint": 26.0,
+      "maxt": 32.0
+    },
+    {
+      "regionName": "東北部地區",
+      "dataDate": "2026-09-25",
+      "mint": 23.0,
+      "maxt": 31.0
+    },
+    {
+      "regionName": "東北部地區",
+      "dataDate": "2026-09-26",
+      "mint": 23.0,
+      "maxt": 33.0
+    },
+    {
+      "regionName": "東北部地區",
+      "dataDate": "2026-09-27",
+      "mint": 24.0,
+      "maxt": 33.0
+    },
+    {
+      "regionName": "東北部地區",
+      "dataDate": "2026-09-28",
+      "mint": 23.0,
+      "maxt": 33.0
+    },
+    {
+      "regionName": "東北部地區",
+      "dataDate": "2026-09-29",
+      "mint": 24.0,
+      "maxt": 34.0
+    },
+    {
+      "regionName": "東北部地區",
+      "dataDate": "2026-09-30",
+      "mint": 24.0,
+      "maxt": 34.0
+    },
+    {
+      "regionName": "東北部地區",
+      "dataDate": "2026-10-01",
+      "mint": 24.0,
+      "maxt": 29.0
+    },
+    {
+      "regionName": "東部地區",
+      "dataDate": "2026-09-25",
+      "mint": 24.0,
+      "maxt": 31.0
+    },
+    {
+      "regionName": "東部地區",
+      "dataDate": "2026-09-26",
+      "mint": 24.0,
+      "maxt": 31.0
+    },
+    {
+      "regionName": "東部地區",
+      "dataDate": "2026-09-27",
+      "mint": 25.0,
+      "maxt": 31.0
+    },
+    {
+      "regionName": "東部地區",
+      "dataDate": "2026-09-28",
+      "mint": 25.0,
+      "maxt": 32.0
+    },
+    {
+      "regionName": "東部地區",
+      "dataDate": "2026-09-29",
+      "mint": 25.0,
+      "maxt": 33.0
+    },
+    {
+      "regionName": "東部地區",
+      "dataDate": "2026-09-30",
+      "mint": 25.0,
+      "maxt": 33.0
+    },
+    {
+      "regionName": "東部地區",
+      "dataDate": "2026-10-01",
+      "mint": 25.0,
+      "maxt": 30.0
+    },
+    {
+      "regionName": "東南部地區",
+      "dataDate": "2026-09-25",
+      "mint": 25.0,
+      "maxt": 31.0
+    },
+    {
+      "regionName": "東南部地區",
+      "dataDate": "2026-09-26",
+      "mint": 25.0,
+      "maxt": 31.0
+    },
+    {
+      "regionName": "東南部地區",
+      "dataDate": "2026-09-27",
+      "mint": 25.0,
+      "maxt": 31.0
+    },
+    {
+      "regionName": "東南部地區",
+      "dataDate": "2026-09-28",
+      "mint": 26.0,
+      "maxt": 31.0
+    },
+    {
+      "regionName": "東南部地區",
+      "dataDate": "2026-09-29",
+      "mint": 26.0,
+      "maxt": 32.0
+    },
+    {
+      "regionName": "東南部地區",
+      "dataDate": "2026-09-30",
+      "mint": 25.0,
+      "maxt": 32.0
+    },
+    {
+      "regionName": "東南部地區",
+      "dataDate": "2026-10-01",
+      "mint": 25.0,
+      "maxt": 31.0
+    }
+  ],
+  "rows": [
+    {
+      "regionName": "北部地區",
+      "dataDate": "2026-09-25",
+      "mint": 22.0,
+      "maxt": 34.0
+    },
+    {
+      "regionName": "北部地區",
+      "dataDate": "2026-09-26",
+      "mint": 23.0,
+      "maxt": 34.0
+    },
+    {
+      "regionName": "北部地區",
+      "dataDate": "2026-09-27",
+      "mint": 22.0,
+      "maxt": 34.0
+    },
+    {
+      "regionName": "北部地區",
+      "dataDate": "2026-09-28",
+      "mint": 23.0,
+      "maxt": 34.0
+    },
+    {
+      "regionName": "北部地區",
+      "dataDate": "2026-09-29",
+      "mint": 23.0,
+      "maxt": 35.0
+    },
+    {
+      "regionName": "北部地區",
+      "dataDate": "2026-09-30",
+      "mint": 23.0,
+      "maxt": 35.0
+    },
+    {
+      "regionName": "北部地區",
+      "dataDate": "2026-10-01",
+      "mint": 23.0,
+      "maxt": 30.0
+    },
+    {
+      "regionName": "中部地區",
+      "dataDate": "2026-09-25",
+      "mint": 24.0,
+      "maxt": 34.0
+    },
+    {
+      "regionName": "中部地區",
+      "dataDate": "2026-09-26",
+      "mint": 24.0,
+      "maxt": 33.0
+    },
+    {
+      "regionName": "中部地區",
+      "dataDate": "2026-09-27",
+      "mint": 24.0,
+      "maxt": 34.0
+    },
+    {
+      "regionName": "中部地區",
+      "dataDate": "2026-09-28",
+      "mint": 24.0,
+      "maxt": 34.0
+    },
+    {
+      "regionName": "中部地區",
+      "dataDate": "2026-09-29",
+      "mint": 24.0,
+      "maxt": 34.0
+    },
+    {
+      "regionName": "中部地區",
+      "dataDate": "2026-09-30",
+      "mint": 25.0,
+      "maxt": 34.0
+    },
+    {
+      "regionName": "中部地區",
+      "dataDate": "2026-10-01",
+      "mint": 24.0,
+      "maxt": 32.0
+    },
+    {
+      "regionName": "南部地區",
+      "dataDate": "2026-09-25",
+      "mint": 26.0,
+      "maxt": 33.0
+    },
+    {
+      "regionName": "南部地區",
+      "dataDate": "2026-09-26",
+      "mint": 26.0,
+      "maxt": 34.0
+    },
+    {
+      "regionName": "南部地區",
+      "dataDate": "2026-09-27",
+      "mint": 25.0,
+      "maxt": 34.0
+    },
+    {
+      "regionName": "南部地區",
+      "dataDate": "2026-09-28",
+      "mint": 26.0,
+      "maxt": 34.0
+    },
+    {
+      "regionName": "南部地區",
+      "dataDate": "2026-09-29",
+      "mint": 26.0,
+      "maxt": 33.0
+    },
+    {
+      "regionName": "南部地區",
+      "dataDate": "2026-09-30",
+      "mint": 26.0,
+      "maxt": 33.0
+    },
+    {
+      "regionName": "南部地區",
+      "dataDate": "2026-10-01",
+      "mint": 26.0,
+      "maxt": 32.0
+    },
+    {
+      "regionName": "東北部地區",
+      "dataDate": "2026-09-25",
+      "mint": 23.0,
+      "maxt": 31.0
+    },
+    {
+      "regionName": "東北部地區",
+      "dataDate": "2026-09-26",
+      "mint": 23.0,
+      "maxt": 33.0
+    },
+    {
+      "regionName": "東北部地區",
+      "dataDate": "2026-09-27",
+      "mint": 24.0,
+      "maxt": 33.0
+    },
+    {
+      "regionName": "東北部地區",
+      "dataDate": "2026-09-28",
+      "mint": 23.0,
+      "maxt": 33.0
+    },
+    {
+      "regionName": "東北部地區",
+      "dataDate": "2026-09-29",
+      "mint": 24.0,
+      "maxt": 34.0
+    },
+    {
+      "regionName": "東北部地區",
+      "dataDate": "2026-09-30",
+      "mint": 24.0,
+      "maxt": 34.0
+    },
+    {
+      "regionName": "東北部地區",
+      "dataDate": "2026-10-01",
+      "mint": 24.0,
+      "maxt": 29.0
+    },
+    {
+      "regionName": "東部地區",
+      "dataDate": "2026-09-25",
+      "mint": 24.0,
+      "maxt": 31.0
+    },
+    {
+      "regionName": "東部地區",
+      "dataDate": "2026-09-26",
+      "mint": 24.0,
+      "maxt": 31.0
+    },
+    {
+      "regionName": "東部地區",
+      "dataDate": "2026-09-27",
+      "mint": 25.0,
+      "maxt": 31.0
+    },
+    {
+      "regionName": "東部地區",
+      "dataDate": "2026-09-28",
+      "mint": 25.0,
+      "maxt": 32.0
+    },
+    {
+      "regionName": "東部地區",
+      "dataDate": "2026-09-29",
+      "mint": 25.0,
+      "maxt": 33.0
+    },
+    {
+      "regionName": "東部地區",
+      "dataDate": "2026-09-30",
+      "mint": 25.0,
+      "maxt": 33.0
+    },
+    {
+      "regionName": "東部地區",
+      "dataDate": "2026-10-01",
+      "mint": 25.0,
+      "maxt": 30.0
+    },
+    {
+      "regionName": "東南部地區",
+      "dataDate": "2026-09-25",
+      "mint": 25.0,
+      "maxt": 31.0
+    },
+    {
+      "regionName": "東南部地區",
+      "dataDate": "2026-09-26",
+      "mint": 25.0,
+      "maxt": 31.0
+    },
+    {
+      "regionName": "東南部地區",
+      "dataDate": "2026-09-27",
+      "mint": 25.0,
+      "maxt": 31.0
+    },
+    {
+      "regionName": "東南部地區",
+      "dataDate": "2026-09-28",
+      "mint": 26.0,
+      "maxt": 31.0
+    },
+    {
+      "regionName": "東南部地區",
+      "dataDate": "2026-09-29",
+      "mint": 26.0,
+      "maxt": 32.0
+    },
+    {
+      "regionName": "東南部地區",
+      "dataDate": "2026-09-30",
+      "mint": 25.0,
+      "maxt": 32.0
+    },
+    {
+      "regionName": "東南部地區",
+      "dataDate": "2026-10-01",
+      "mint": 25.0,
+      "maxt": 31.0
+    }
+  ]
+}

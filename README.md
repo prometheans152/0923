@@ -1,11 +1,14 @@
-# AIoT-DA L3 HW1｜台灣即時氣象測站 GIS Dashboard
+# AIoT-DA L3 HW1｜台灣即時氣象測站 GIS Dashboard 與 7 日天氣預報
 
-本專案為 AIoT-DA 第三課作業，嚴格依照課堂規劃的 **Five Gates** 驗證流程，建構一套從中央氣象署真實 Open Data 取得、SQLite 本地持久化、GIS 互動視覺化、GitHub 版本管理與自動化，到 Vercel 雲端部署的完整資料應用系統。
+本專案為 AIoT-DA 第三課作業，嚴格依照課堂規劃的 **Five Gates** 驗證流程，建構一套從中央氣象署真實 Open Data 取得、SQLite 本地持久化、GIS 互動視覺化與 7 日天氣預報趨勢、GitHub 版本管理與自動化，到 Vercel 雲端部署的完整資料應用系統。
 
 - **GitHub Repository：** https://github.com/prometheans152/0923
 - **Vercel Production：** https://0923-site.vercel.app/
 - **GitHub Pages Fallback：** https://prometheans152.github.io/0923/
-- **CWA Dataset：** `O-A0003-001`（氣象觀測站－10分鐘綜觀氣象資料）
+- **CWA Datasets：**
+  - 即時測站：`O-A0003-001`（氣象觀測站－10分鐘綜觀氣象資料，全台 362 站即時 GIS）
+  - 7 日預報：`F-C0032-003`（一般天氣預報－七天天氣預報，6 區 7 日氣溫預報，42 筆）
+  - 相容備援：`F-A0010-001`（一週農業氣象預報，課程講義舊端點已失效 404，本系統保留解析相容與離線備援）
 
 > **Five Gates 核心路線：**  
 > `CWA API (Gate 1) → SQLite (Gate 2) → GIS Dashboard (Gate 3) → GitHub (Gate 4) → Vercel (Gate 5)`
@@ -26,8 +29,19 @@
 1. **Gate 1（真實資料取得）：** 透過中央氣象署 Open Data API 真實取得 `O-A0003-001` 全台氣象測站 10 分鐘觀測資料，完成資料清洗、無效值（`-99` 等）過濾與統計指標計算，產出 `metadata.build_mode = "live_cwa_api"` 的真實觀測資料集。
 2. **Gate 2（資料庫持久化）：** 設計符合前端展示與統計需求的關聯綱要，將觀測資料寫入專案根目錄 SQLite 資料庫（`data.db`），包含獨立 `metadata`、`observations` 與 `snapshots` 表，支援原子化快照替換與去重更新機制，並以 SQL Query 實證資料可被正確檢索。
 3. **Gate 3（GIS 前端呈現）：** 以 Leaflet 建立支援 MapTiler 深色/淺色底圖切換的 GIS 前端，首選路徑為呼叫後端 Flask `/api/weather`（背後由 SQLite 提供資料，回傳 `storage = "sqlite"`），在純靜態環境（如 GitHub Pages）則平滑降級為靜態 JSON。
-4. **Gate 4（版本管理與 CI/CD）：** 將完整原始碼、測試、設定納入 GitHub 管理，編寫 `.github/workflows/update-and-deploy.yml` 自動化工作流，納入全套 22 項單元與整合測試及 JavaScript 語法檢查。
+4. **Gate 4（版本管理與 CI/CD）：** 將完整原始碼、測試、設定納入 GitHub 管理，編寫 `.github/workflows/update-and-deploy.yml` 自動化工作流，納入全套 30 項單元與整合測試及 JavaScript 語法檢查。
 5. **Gate 5（雲端部署）：** 將 Flask Web App 部署至 Vercel Serverless Function，配置 `vercel.json` 打包 `data.db` 快照，誠實揭露 Serverless 唯讀 SQLite 限制與未來外部持久化資料庫演進方向。
+6. **7 日天氣預報功能（課堂教師指定需求）：**
+   - **分區與期程：** 整合中央氣象署 7 日氣溫預報，完整涵蓋課程指定之六大預報分區（北部地區、中部地區、南部地區、東北部地區、東部地區、東南部地區），各區包含 7 日之最低溫（MinT）與最高溫（MaxT），共 42 筆預報紀錄。
+   - **資料來源與真實性（Live vs Fallback）：**
+     - 課程講義教材原本標註使用 `F-A0010-001`（一週農業氣象預報），但經實際驗證該 API 端點目前回傳 HTTP 404 不存在。
+     - 經查閱中央氣象署官方 Open Data 規範，目前現行有效之 7 日分區預報正式 Dataset 為 `F-C0032-003`（一般天氣預報－七天天氣預報）。
+     - 本專案 Live 資料管線採用官方現行 `F-C0032-003` 真實抓取即時預報，產出之最新驗證資料跨度為 **2026-09-25 至 2026-10-01**，Metadata 誠實標示 `source_dataset = "F-C0032-003"`、`build_mode = "live_cwa_api"`。
+     - 同時保留對舊版 `F-A0010-001` JSON 結構之解析相容層與離線 Fixture（`forecast_fixture.json`），僅於網路斷線時作為容錯降級，且明確標註 `fallback_fixture`，絕不偽裝為即時資料。
+   - **資料庫持久化：** 在 `data.db` 擴充 `TemperatureForecasts` 資料表（欄位包含 `id`, `regionName`, `dataDate`, `mint`, `maxt` 及 `UNIQUE(regionName, dataDate)`）與 `forecast_metadata`，支援去重與批次原子替換，並確保在觀測站資料更新時互不覆蓋、安全共存。
+   - **後端 API：** 提供 `/api/forecast` 端點（支援 `?region=...` 參數過濾），直接由 SQLite 讀取最新預報資料。
+   - **前端視覺化 UI：** 儀表板新增「7 日天氣預報」控制面板，包含六大分區下拉選單、7 日日期選單、所選日期氣溫摘要卡、原生 SVG 雙折線圖（最低溫/最高溫趨勢與垂直選取指示），以及完整 7 日數據表格（支援點擊切換日期高亮聯動）。
+   - **GIS 完整性保護：** 原有全台 362 站即時氣溫監控 GIS 地圖與詳細資訊面板維持完整運作，完全無功能降級。
 
 ---
 
@@ -35,29 +49,31 @@
 
 ```mermaid
 flowchart TD
-    A["中央氣象署 CWA API<br/>O-A0003-001"] -->|Gate 1: 安全 Fetch & Normalize| B["scripts/fetch_and_build.py"]
-    B -->|Gate 2: 原子化寫入 / 去重| C[("SQLite data.db<br/>(observations + metadata + snapshots)")]
-    B -->|靜態匯出| D["docs/data/stations.json"]
-    C -->|唯讀連線| E["Flask Server (server.py)<br/>/api/weather & /api/db-check"]
-    E -->|Gate 3: GIS 視覺化| F["前端 GIS Dashboard<br/>(Leaflet + MapTiler)"]
+    A["中央氣象署 CWA API<br/>O-A0003-001 (即時測站)<br/>F-C0032-003 (7日預報)"] -->|安全 Fetch & Normalize| B["scripts/fetch_and_build.py"]
+    B -->|原子化寫入 / 去重| C[("SQLite data.db<br/>observations + metadata + snapshots<br/>TemperatureForecasts + forecast_metadata")]
+    B -->|靜態匯出| D["docs/data/<br/>stations.json & forecast.json"]
+    C -->|唯讀連線| E["Flask Server (server.py)<br/>/api/weather & /api/forecast & /api/db-check"]
+    E -->|GIS 視覺化 + 7日預報面板| F["前端 Dashboard<br/>(Leaflet GIS + 原生 SVG 趨勢圖)"]
     D -.->|靜態降級 Fallback| F
-    E -->|Gate 4: 程式碼託管 & CI| G["GitHub Repo + Actions"]
-    E -->|Gate 5: Serverless 打包| H["Vercel Production"]
+    E -->|程式碼託管 & CI (30 Tests)| G["GitHub Repo + Actions"]
+    E -->|Serverless 打包| H["Vercel Production"]
 ```
 
 ### 關鍵技術堆疊
 
 | 層級 | 使用技術 | 角色與職責 |
 |---|---|---|
-| **公開資料源** | CWA O-A0003-001 | 中央氣象署全台無人與有人測站 10 分鐘即時觀測資料 |
-| **資料管線** | Python 3.12 (`urllib`, `json`) | 安全憑證存取、資料清理、色階判定、統計分析 |
-| **持久層** | SQLite 3 (`data.db`) | 根目錄關聯式資料庫，原子化快照、主鍵去重、結構化索引 |
-| **後端 API** | Flask 3.1 | 提供 `/api/weather` 與 `/api/db-check`，唯讀連線 SQLite |
+| **公開資料源** | CWA O-A0003-001 & F-C0032-003 | 即時全台測站 10 分鐘觀測資料 + 6 區 7 日氣溫預報（42 列） |
+| **相容備援源** | CWA F-A0010-001 (Fixture) | 課程舊版規格解析相容與離線降級備援 |
+| **資料管線** | Python 3.12 (`urllib`, `json`) | 安全憑證存取、雙資料集清理、色階判定、統計分析 |
+| **持久層** | SQLite 3 (`data.db`) | 根目錄關聯式資料庫，原子化快照、主鍵去重、`TemperatureForecasts` 預報表 |
+| **後端 API** | Flask 3.1 | 提供 `/api/weather`、`/api/forecast` 與 `/api/db-check`，唯讀連線 SQLite |
 | **GIS 前端** | Leaflet 1.9 + MapTiler SDK | 密集測站標記、氣溫數值 Badge、Popup 詳情、縣市定位 |
+| **預報視覺化** | 原生 SVG 雙折線圖 + 互動表格 | 7 日 MinT/MaxT 氣溫趨勢圖、分區選單、日期選單、高亮連動 |
 | **底圖切換** | MapTiler Streets v4 / Dark | 依使用者偏好切換深色與淺色向量光柵底圖 |
 | **版本管理** | Git + GitHub | 程式碼歷程管理、CI 自動化測試工作流 |
 | **雲端部署** | Vercel (`@vercel/python`) | Python Serverless Function，打包唯讀 SQLite 快照 |
-| **自動化測試** | pytest (22 tests) + node --check | 覆蓋 Schema、色階、SQLite 綱要、重複寫入測試、列數一致性、Flask API |
+| **自動化測試** | pytest (30 tests) + node --check | 覆蓋 Schema、色階、SQLite 綱要、重複寫入、7日預報資料表、Flask API |
 
 ---
 
@@ -168,21 +184,45 @@ CREATE TABLE IF NOT EXISTS snapshots (
     ingested_at TEXT NOT NULL,
     PRIMARY KEY (obs_time, source_mode)
 );
+
+-- 7 日氣溫預報資料表（課堂教師指定需求）
+CREATE TABLE IF NOT EXISTS TemperatureForecasts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    regionName TEXT NOT NULL,
+    dataDate TEXT NOT NULL,
+    mint REAL,
+    maxt REAL,
+    UNIQUE(regionName, dataDate)
+);
+
+CREATE TABLE IF NOT EXISTS forecast_metadata (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    source TEXT NOT NULL,
+    source_dataset TEXT NOT NULL,
+    generated_at TEXT NOT NULL,
+    total_regions INTEGER NOT NULL,
+    total_records INTEGER NOT NULL,
+    build_mode TEXT NOT NULL,
+    storage TEXT NOT NULL,
+    regions_json TEXT NOT NULL
+);
 ```
 
 ### 驗證方式
-1. 執行 `python scripts/query_db.py --county 新竹縣 --limit 3` 檢驗實際 SQL 查詢結果。
-2. 執行 `pytest tests/test_database.py` 驗證資料表綱要、列數一致性、原子性替換以及重複測站 upsert 行為。
+1. 執行 `python scripts/query_db.py --county 新竹縣 --limit 3` 檢驗即時測站 SQL 查詢結果。
+2. 執行 SQL 查詢 `SELECT COUNT(*) FROM TemperatureForecasts` 及抽樣 6 區 7 日預報資料。
+3. 執行 `pytest tests/test_database.py tests/test_forecast.py` 驗證資料表綱要、列數一致性、原子性替換以及預報去重 upsert 行為。
 
 ### 實際結果
-- **SQLite 總筆數（COUNT）：** 362（與 `stations.json` 的 362 站完全一致）
-- **觀測時間戳：** `2026-09-24T22:50:00+08:00`
-- **建置模式：** `live_cwa_api`
-- **去重更新測試：** `test_upsert_duplicate_station_behavior` 通過，重複 `station_id` 原地更新且總筆數維持不變。
+- **SQLite 即時測站筆數（COUNT）：** 362（與 `stations.json` 的 362 站完全一致）
+- **SQLite 7 日預報筆數（COUNT）：** 42（6 區 × 7 天，精準符合規格）
+- **預報日期區間（最新驗證）：** `2026-09-25` 至 `2026-10-01`
+- **建置模式：** `live_cwa_api`（真實 CWA F-C0032-003 API）
+- **去重更新測試：** `test_upsert_duplicate_station_behavior` 與 `test_forecast_db_helpers` 全數通過，重複鍵值原地更新且約束生效。
 
 ### 證據（SQL 查詢輸出）
 ```text
-=== SQLite Verification (data.db) ===
+=== SQLite Verification (data.db: observations) ===
 Total stations (COUNT): 362
 Observation time:       2026-09-24T22:50:00+08:00
 Build mode:             live_cwa_api
@@ -192,25 +232,43 @@ Sample query (新竹縣, 3 rows):
   - 五峰站 (72D080) [新竹縣 五峰鄉]: Temp: 19.2°C, RH: 95.0%, Wind: 0.5 m/s, Weather: 晴
   - 國一N077K (CAD020) [新竹縣 湖口鄉]: Temp: 23.5°C, RH: 84.0%, Wind: 1.0 m/s, Weather: 晴
   - 國一S082K (CAD030) [新竹縣 湖口鄉]: Temp: 24.2°C, RH: 83.0%, Wind: 0.5 m/s, Weather: 晴
+
+=== SQLite Verification (data.db: TemperatureForecasts) ===
+Total forecast rows:    42
+Total regions:          6 (北部地區、中部地區、南部地區、東北部地區、東部地區、東南部地區)
+Forecast date span:     2026-09-25 .. 2026-10-01 (7 days)
+Source dataset:         F-C0032-003
+Build mode:             live_cwa_api
+
+Sample forecast query (北部地區, 2026-09-25):
+  - 北部地區 | 2026-09-25: MinT: 22.0°C, MaxT: 34.0°C
 ```
 - **Gate 2 結論：PASS**
 
 ---
 
-## Gate 3｜GIS 地圖前端與 Flask SQLite API (GIS Frontend)
+## Gate 3｜GIS 地圖前端、7 日天氣預報面板與 Flask SQLite API (GIS Frontend & Forecast)
 
 ### 工作內容
 1. 後端 `server.py` 實作核心路由：
    - `/api/weather`：使用唯讀連線模式開啟 `data.db`，由 `payload_from_db()` 重構標準前端契約，標記 `metadata.storage = "sqlite"` 與 `metadata.build_mode = "live_cwa_api"`。
+   - `/api/forecast`：使用唯讀連線模式開啟 `data.db`，支援選填 `?region=...` 參數過濾，由 `forecast_payload_from_db()` 從 `TemperatureForecasts` 表讀取六區 7 日氣溫預報，標記 `storage = "sqlite"` 與 `build_mode = "live_cwa_api"`。
    - `/api/db-check`：執行真實 SQL `SELECT COUNT(*)` 與條件抽樣查詢，回傳 `database = "sqlite"` 與即時樣本。
-   - `/` 與靜態路由：回傳 `docs/index.html`、`docs/app.js`、`docs/data/stations.json`。
-2. 前端 `docs/app.js` 雙路徑策略：
-   - **Vercel 環境首選：** 優先請求 `/api/weather`，直接展示由後端 Flask 讀取 SQLite 的最新即時資料。
-   - **GitHub Pages 靜態備援：** 若 `/api/weather` 回傳失敗（靜態環境），自動捕捉異常並優雅降級讀取 `./data/stations.json`。
-3. 前端 UI 與 GIS 體驗：
+   - `/` 與靜態路由：回傳 `docs/index.html`、`docs/app.js`、`docs/data/stations.json`、`docs/data/forecast.json`。
+2. 前端 `docs/app.js` 多層級降級策略：
+   - **Vercel 環境首選：** 優先請求 `/api/weather` 與 `/api/forecast`，直接展示由後端 Flask 讀取 SQLite 的最新即時資料與 7 日預報。
+   - **GitHub Pages 靜態備援：** 若 API 回傳失敗（靜態環境），自動捕捉異常並優雅降級讀取 `./data/stations.json` 與 `./data/forecast.json`。
+   - **離線備援（Fixture Fallback）：** 預報模組若完全無網路連線，降級使用相容舊格式之 `./data/forecast_fixture.json`，並清楚標示 `fallback_fixture` 狀態。
+3. 前端 UI 與 7 日預報視覺化體驗：
    - 台灣全島初始置中視角（Lat 23.75, Lon 120.95, Zoom 8）。
    - 保留 MapTiler Streets v4（淺色）與 Streets v4 Dark（深色）底圖快速切換。
    - 測站氣溫數值 Badge、彈出視窗（Popup）詳細氣象資訊、縣市快速定位篩選、氣溫分級篩選與測站名稱即時搜尋。
+   - **7 日天氣預報面板（#forecast-panel）：**
+     - 六大預報分區下拉切換（北部、中部、南部、東北部、東部、東南部）。
+     - 7 日日期下拉選單，同步連動「所選日期摘要卡」顯示該分區當日最高溫與最低溫。
+     - 原生輕量化 SVG 雙折線圖（MinT 藍色 `#60a5fa`、MaxT 紅色 `#f87171`），含垂直選取引導線、數值標註與可點擊欄位。
+     - 7 日預報數據表格，顯示完整 7 天日期、MinT、MaxT，點擊表格列即時連動選取日期與折線圖高亮。
+     - 頂部導航列包含「📅 7 日天氣預報」展開/收合切換按鈕，支援響應式行動裝置排版。
 
 ### 7 段氣溫色階規範
 
@@ -226,12 +284,14 @@ Sample query (新竹縣, 3 rows):
 | 無資料 / 缺測 | `#94A3B8` | 無資料 | 灰色 |
 
 ### 驗證方式
-1. 使用 Flask test client 針對 `/`, `/app.js`, `/data/stations.json`, `/api/weather`, `/api/db-check` 進行請求測試。
+1. 使用 Flask test client 針對 `/`, `/app.js`, `/data/stations.json`, `/data/forecast.json`, `/api/weather`, `/api/forecast`, `/api/db-check` 進行請求測試。
 2. 執行 `node --check docs/app.js` 檢查前端程式碼語法。
 
 ### 實際結果
 - 所有路由回傳 HTTP 200。
 - `/api/weather` 成功由 SQLite 提供 362 站資料，包含 `storage: "sqlite"` 與 `build_mode: "live_cwa_api"`。
+- `/api/forecast` 成功由 SQLite 提供 6 區 42 筆 7 日預報，包含 `storage: "sqlite"` 與 `source_dataset: "F-C0032-003"`。
+- `/api/forecast?region=北部地區` 成功依分區過濾，回傳 7 筆預報紀錄。
 - `/api/db-check` 成功執行 SQL 查詢，回傳 `row_count: 362` 與新竹縣 5 筆樣本文檔。
 - 前端 JavaScript 語法檢查通過，無任何語法錯誤。
 
@@ -240,17 +300,22 @@ Sample query (新竹縣, 3 rows):
 Route /                   -> status 200, content-type: text/html; charset=utf-8
 Route /app.js             -> status 200, content-type: text/javascript; charset=utf-8
 Route /data/stations.json -> status 200, content-type: application/json
+Route /data/forecast.json -> status 200, content-type: application/json
 Route /api/weather        -> status 200, content-type: application/json
   storage: sqlite
   build_mode: live_cwa_api
   total_stations: 362
   obs_time: 2026-09-24T22:50:00+08:00
+Route /api/forecast       -> status 200, content-type: application/json
+  storage: sqlite
+  build_mode: live_cwa_api
+  source_dataset: F-C0032-003
+  total_records: 42
+  date_span: 2026-09-25 .. 2026-10-01
+Route /api/forecast?region=北部地區 -> status 200 (7 rows filtered)
 Route /api/db-check       -> status 200, content-type: application/json
   database: sqlite
   row_count: 362
-  latest_observation_time: 2026-09-24T22:50:00+08:00
-  sample count: 5
-  first sample station: 五峰站
 node --check docs/app.js  -> 結束碼 0 (PASS)
 ```
 - **Gate 3 結論：PASS**
@@ -264,17 +329,17 @@ node --check docs/app.js  -> 結束碼 0 (PASS)
 2. 撰寫自動化工作流 `.github/workflows/update-and-deploy.yml`：
    - 定時排程（每 30 分鐘執行一次）與手動觸發（`workflow_dispatch`）。
    - 工作流設定為預期讀取 Repository Secret `secrets.CWA_API_KEY`（若遠端 Repository Secret 有配置）；誠實說明：我們未獨立驗證遠端 GitHub Repository Secret 之設定狀態。若未配置該密鑰，建置腳本具備備援容錯機制，不會導致建置崩潰。
-   - 自動執行 `fetch_and_build.py` 重建 `stations.json` 與 `data.db`。
-   - 執行品質門檻驗證：`pytest -v`（全套 22 個測試）與 `node --check docs/app.js`。
+   - 自動執行 `fetch_and_build.py` 同步重建 `stations.json`、`forecast.json` 與 `data.db`（同時包含 362 站即時觀測與 42 筆 7 日預報）。
+   - 執行品質門檻驗證：`pytest -v`（全套 30 個測試）與 `node --check docs/app.js`。
    - 自動上傳 `docs/` 目錄並發布至 GitHub Pages。
 
 ### 驗證方式
-1. 本機執行完整測試套件 `pytest -v` 確保所有 22 項測試全部通過。
+1. 本機執行完整測試套件 `pytest -v` 確保所有 30 項測試全部通過。
 2. 檢查 `.gitignore` 確保 `.env` 與暫存檔案未被加入 staging。
 3. 檢查 Git 提交歷程與遠端關聯。
 
 ### 實際結果
-- 單元與整合測試共 22 項全部通過（包含氣溫色階、Schema 結構、SQLite 綱要、重複測站處理、列數一致性與 Flask API）。
+- 單元與整合測試共 30 項全部通過（包含氣溫色階、Schema 結構、SQLite 綱要、重複測站處理、列數一致性、Flask API，以及新增之 7 日預報資料表、F-C0032-003 解析、F-A0010-001 相容、資料庫整合與日期間隔驗證測試）。
 - `.env` 與 `api_key.txt` 確實被忽略且未追蹤。
 
 ### 證據（測試輸出）
@@ -282,32 +347,40 @@ node --check docs/app.js  -> 結束碼 0 (PASS)
 ============================= test session starts =============================
 platform win32 -- Python 3.12.10, pytest-9.1.1, pluggy-1.6.0
 rootdir: C:\Users\prometheans\Desktop\AIOT\week3-cwa-station-map
-collected 22 items
+collected 30 items
 
-tests/test_color_scale.py::test_temperature_below_10_is_blue PASSED      [  4%]
-tests/test_color_scale.py::test_temperature_20_to_25_is_yellowish PASSED [  9%]
-tests/test_color_scale.py::test_temperature_above_35_is_deep_red PASSED  [ 13%]
-tests/test_color_scale.py::test_temperature_intermediate_bins PASSED     [ 18%]
-tests/test_color_scale.py::test_missing_temperature PASSED               [ 22%]
-tests/test_database.py::test_schema_initializes PASSED                   [ 27%]
-tests/test_database.py::test_metadata_table_fields PASSED                [ 31%]
-tests/test_database.py::test_atomic_snapshot_replacement PASSED          [ 36%]
-tests/test_database.py::test_upsert_duplicate_station_behavior PASSED    [ 40%]
-tests/test_database.py::test_row_count_matches_json PASSED               [ 45%]
-tests/test_database.py::test_query_sample_works PASSED                   [ 50%]
-tests/test_database.py::test_latest_payload_reconstruction PASSED        [ 54%]
-tests/test_database.py::test_flask_api_weather_uses_sqlite PASSED        [ 59%]
-tests/test_database.py::test_flask_routes_all_200 PASSED                 [ 63%]
-tests/test_normalize.py::test_clean_number_sentinels PASSED              [ 68%]
-tests/test_normalize.py::test_clean_number_valid PASSED                  [ 72%]
-tests/test_normalize.py::test_clean_number_bounds PASSED                 [ 77%]
-tests/test_normalize.py::test_extract_coordinates PASSED                 [ 81%]
-tests/test_normalize.py::test_normalize_station_valid PASSED             [ 86%]
-tests/test_normalize.py::test_normalize_station_missing_coords_dropped PASSED [ 90%]
-tests/test_normalize.py::test_normalize_dataset_summary_stats PASSED     [ 95%]
+tests/test_color_scale.py::test_temperature_below_10_is_blue PASSED      [  3%]
+tests/test_color_scale.py::test_temperature_20_to_25_is_yellowish PASSED [  6%]
+tests/test_color_scale.py::test_temperature_above_35_is_deep_red PASSED  [ 10%]
+tests/test_color_scale.py::test_temperature_intermediate_bins PASSED     [ 13%]
+tests/test_color_scale.py::test_missing_temperature PASSED               [ 16%]
+tests/test_database.py::test_schema_initializes PASSED                   [ 20%]
+tests/test_database.py::test_metadata_table_fields PASSED                [ 23%]
+tests/test_database.py::test_atomic_snapshot_replacement PASSED          [ 26%]
+tests/test_database.py::test_upsert_duplicate_station_behavior PASSED    [ 30%]
+tests/test_database.py::test_row_count_matches_json PASSED               [ 33%]
+tests/test_database.py::test_query_sample_works PASSED                   [ 36%]
+tests/test_database.py::test_latest_payload_reconstruction PASSED        [ 40%]
+tests/test_database.py::test_flask_api_weather_uses_sqlite PASSED        [ 43%]
+tests/test_database.py::test_flask_routes_all_200 PASSED                 [ 46%]
+tests/test_forecast.py::test_temperature_forecasts_table_schema PASSED   [ 50%]
+tests/test_forecast.py::test_normalize_forecast_dataset_legacy_fa0010_001 PASSED [ 53%]
+tests/test_forecast.py::test_normalize_forecast_dataset_fc0032_003 PASSED [ 56%]
+tests/test_forecast.py::test_forecast_db_helpers PASSED                  [ 60%]
+tests/test_forecast.py::test_forecast_live_integration_and_current_dates PASSED [ 63%]
+tests/test_forecast.py::test_flask_api_forecast_routes PASSED            [ 66%]
+tests/test_forecast.py::test_observation_data_preserved_during_forecast_generation PASSED [ 70%]
+tests/test_forecast.py::test_honest_fallback_reporting PASSED            [ 73%]
+tests/test_normalize.py::test_clean_number_sentinels PASSED              [ 76%]
+tests/test_normalize.py::test_clean_number_valid PASSED                  [ 80%]
+tests/test_normalize.py::test_clean_number_bounds PASSED                 [ 83%]
+tests/test_normalize.py::test_extract_coordinates PASSED                 [ 86%]
+tests/test_normalize.py::test_normalize_station_valid PASSED             [ 90%]
+tests/test_normalize.py::test_normalize_station_missing_coords_dropped PASSED [ 93%]
+tests/test_normalize.py::test_normalize_dataset_summary_stats PASSED     [ 96%]
 tests/test_schema.py::test_generated_stations_json_schema PASSED         [100%]
 
-============================= 22 passed in 0.39s ==============================
+============================= 30 passed in 0.77s ==============================
 ```
 - **Gate 4 結論：PASS**
 
@@ -413,16 +486,22 @@ tests/test_schema.py::test_generated_stations_json_schema PASSED         [100%]
 | 驗證項目 | 驗證命令 / 方法 | 預期標準 | 實際結果 | 狀態 |
 |---|---|---|---|:---:|
 | **Gate 1 即時 CWA 資料取得** | 安全載入 API Key 執行 `fetch_and_build.py` | 成功取得 O-A0003-001，產出真實資料 | 取得 362 站，觀測時間 22:50，模式 `live_cwa_api` | **PASS** |
-| **Gate 2 SQLite 資料持久化** | `row_count('data.db')` | 筆數大於 0 | 筆數 = 362 | **PASS** |
+| **7 日預報即時 CWA 資料取得** | 安全載入 API Key 執行 `fetch_and_build.py` | 成功取得 F-C0032-003，產出 6 區 7 日資料 | 取得 42 筆，跨度 2026-09-25..10-01，模式 `live_cwa_api` | **PASS** |
+| **Gate 2 SQLite 測站持久化** | `row_count('data.db')` | 筆數大於 0 | 筆數 = 362 | **PASS** |
+| **Gate 2 SQLite 預報持久化** | `forecast_row_count('data.db')` | 筆數 = 42 (6 區 × 7 天) | 筆數 = 42 | **PASS** |
 | **JSON 與 SQLite 筆數一致性** | 比較 `stations.json` 與 `data.db` | 筆數完全一致 | JSON 362 站 == DB 362 筆 | **PASS** |
+| **預報 JSON 與 SQLite 一致性** | 比較 `forecast.json` 與 `data.db` | 筆數完全一致 | JSON 42 筆 == DB 42 筆 | **PASS** |
 | **SQLite 條件查詢驗證** | `python scripts/query_db.py --county 新竹縣` | 能檢索出新竹縣真實測站與天氣數值 | 檢索出五峰站 (19.2°C)、國一N077K (23.5°C)、國一S082K (24.2°C) | **PASS** |
 | **SQLite 重複測站寫入更新** | `test_upsert_duplicate_station_behavior` | 重複測站原地更新，不產生重複列 | 測試通過，筆數維持 1，數值正確更新 | **PASS** |
 | **JavaScript 語法檢查** | `node --check docs/app.js` | 無語法或編譯錯誤 | 結束碼 0，無任何警告或錯誤 | **PASS** |
-| **單元與整合測試套件** | `pytest -v` | 全部通過（22/22） | 22 passed in 0.39s | **PASS** |
+| **單元與整合測試套件** | `pytest -v` | 全部通過（30/30） | 30 passed in 0.77s | **PASS** |
 | **Flask GET `/`** | Flask test client 請求首頁 | HTTP 200 | HTTP 200 | **PASS** |
 | **Flask GET `/app.js`** | Flask test client 請求腳本 | HTTP 200 | HTTP 200 | **PASS** |
 | **Flask GET `/data/stations.json`** | Flask test client 請求降級 JSON | HTTP 200 | HTTP 200 | **PASS** |
+| **Flask GET `/data/forecast.json`** | Flask test client 請求預報降級 JSON | HTTP 200 | HTTP 200 | **PASS** |
 | **Flask GET `/api/weather`** | Flask test client 請求 API | HTTP 200，資料由 SQLite 提供 | HTTP 200，`storage: "sqlite"`，站數 362 | **PASS** |
+| **Flask GET `/api/forecast`** | Flask test client 請求預報 API | HTTP 200，資料由 SQLite 提供 | HTTP 200，`storage: "sqlite"`，筆數 42 | **PASS** |
+| **Flask GET `/api/forecast?region=北部地區`** | Flask test client 請求分區過濾 | HTTP 200，過濾 7 筆 | HTTP 200，筆數 7 | **PASS** |
 | **Flask GET `/api/db-check`** | Flask test client 請求驗證端點 | HTTP 200，包含資料庫摘要 | HTTP 200，`database: "sqlite"`，筆數 362 | **PASS** |
 
 ---
@@ -469,25 +548,28 @@ week3-cwa-station-map/
 ├── docs/
 │   ├── index.html                   # GIS 地圖主頁面
 │   ├── style.css                    # 儀表板樣式
-│   ├── app.js                       # Leaflet 地圖互動與雙路徑資料載入
+│   ├── app.js                       # Leaflet 地圖互動、7日預報與雙路徑資料載入
 │   ├── report-dashboard.png         # 成果畫面截圖
 │   └── data/
-│       ├── stations.json            # 靜態資料快照（Pages 備援）
-│       └── stations_fixture.json    # 離線測試備用資料
+│       ├── stations.json            # 測站即時資料快照（Pages 備援）
+│       ├── stations_fixture.json    # 測站離線測試備用資料
+│       ├── forecast.json            # 7 日預報靜態快照（Pages 備援）
+│       └── forecast_fixture.json    # 舊版 F-A0010-001 離線測試備用資料
 ├── scripts/
-│   ├── database.py                  # Gate 2: SQLite 模組與 CLI 檢驗
-│   ├── fetch_and_build.py           # Gate 1: CWA 抓取與雙重建置
-│   ├── normalize.py                 # CWA 資料清理與色階計算
+│   ├── database.py                  # Gate 2: SQLite 模組、資料表維護與 CLI 檢驗
+│   ├── fetch_and_build.py           # Gate 1: CWA 雙資料集抓取與建置
+│   ├── normalize.py                 # CWA 資料清理、色階計算與預報正規化
 │   ├── query_db.py                  # Gate 2: 獨立 SQL 查詢驗證腳本
 │   ├── verify_local.py              # 全流程本機自動驗證腳本
 │   └── verify_production.py         # 生產環境線上自動驗證腳本
 ├── tests/
 │   ├── test_color_scale.py          # 7 段氣溫色階測試
 │   ├── test_database.py             # SQLite 綱要、重複測站處理與 Flask API 整合測試
+│   ├── test_forecast.py             # 7 日天氣預報綱要、正規化、API 測試
 │   ├── test_normalize.py            # 資料清理與無效值過濾測試
 │   └── test_schema.py               # stations.json 綱要規範測試
-├── data.db                          # Gate 2: 根目錄 SQLite 快照資料庫
-├── server.py                        # Gate 3: Flask Web 伺服器 (SQLite 唯讀)
+├── data.db                          # Gate 2: 根目錄 SQLite 快照資料庫 (含測站與預報)
+├── server.py                        # Gate 3: Flask Web 伺服器 (SQLite 唯讀，/api/weather & /api/forecast)
 ├── vercel.json                      # Gate 5: Vercel 打包與路由設定
 ├── requirements.txt                 # Python 依賴套件
 └── README.md                        # 作業完整書面報告
