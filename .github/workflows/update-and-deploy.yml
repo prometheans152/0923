@@ -38,15 +38,16 @@ jobs:
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-      - name: Run verification tests
-        run: |
-          pytest -v
-
-      - name: Fetch live CWA dataset and build sanitized stations.json
+      - name: Fetch live CWA dataset and regenerate stations.json and data.db
         env:
           CWA_API_KEY: ${{ secrets.CWA_API_KEY }}
         run: |
           python scripts/fetch_and_build.py
+
+      - name: Run verification tests
+        run: |
+          pytest -v
+          node --check docs/app.js
 
       - name: Setup GitHub Pages
         uses: actions/configure-pages@v5

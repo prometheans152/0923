@@ -5,13 +5,20 @@
       "src": "api/index.py",
       "use": "@vercel/python",
       "config": {
-        "includeFiles": "docs/**"
+        "includeFiles": [
+          "data.db",
+          "docs/**"
+        ]
       }
     }
   ],
   "routes": [
     {
       "src": "/api/weather",
+      "dest": "/api/index.py"
+    },
+    {
+      "src": "/api/db-check",
       "dest": "/api/index.py"
     },
     {

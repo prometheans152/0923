@@ -168,13 +168,13 @@ async function loadData(showToastMsg = true) {
     console.warn('[WARN] SQLite API unavailable; trying static stations.json:', apiErr);
     try {
       // GitHub Pages/static fallback: generated from the same normalized CWA snapshot.
-      const jsonRes = await fetch(`data/stations.json?t=${stamp}`, { cache: 'no-store' });
+      const jsonRes = await fetch(`./data/stations.json?t=${stamp}`, { cache: 'no-store' });
       if (!jsonRes.ok) throw new Error(`HTTP ${jsonRes.status}`);
       payload = await jsonRes.json();
     } catch (jsonErr) {
       console.warn('[WARN] stations.json unavailable; trying bundled fixture:', jsonErr);
       try {
-        const fixRes = await fetch('data/stations_fixture.json', { cache: 'no-store' });
+        const fixRes = await fetch('./data/stations_fixture.json', { cache: 'no-store' });
         if (fixRes.ok) {
           payload = await fixRes.json();
           if (payload.features && !payload.stations) {

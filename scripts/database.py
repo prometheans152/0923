@@ -1,14 +1,14 @@
-"""SQLite persistence for AIoT Week 3 weather observations.
+"""SQLite persistence module for Taiwan CWA Weather Station Dashboard.
 
 Gate 2 requires fetched CWA observations to be persisted in SQLite and queryable.
-No secrets are stored in this database.
+Never stores or logs secrets.
 """
 from __future__ import annotations
 
+import argparse
 import json
-import sqlite3
-from datetime import datetime, timezone
 from pathlib import Path
+import sqlite3
 from typing import Any, Dict, List, Optional
 
 COLOR_SCALE = [
@@ -23,6 +23,7 @@ COLOR_SCALE = [
 
 
 def connect(db_path: Path | str) -> sqlite3.Connection:
+    """Connect to SQLite database with standard read-write permissions."""
     path = Path(db_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(path)
@@ -30,12 +31,40 @@ def connect(db_path: Path | str) -> sqlite3.Connection:
     return conn
 
 
+def connect_readonly(db_path: Path | str) -> sqlite3.Connection:
+    """Connect to SQLite database in read-only mode where supported."""
+    path = Path(db_path).resolve()
+    if not path.is_file():
+        return connect(path)
+    uri_path = f"file:{path.as_posix()}?mode=ro"
+    try:
+        conn = sqlite3.connect(uri_path, uri=True)
+    except Exception:
+        conn = sqlite3.connect(path)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
 def init_db(db_path: Path | str) -> None:
+    """Initialize SQLite tables: metadata, observations, and snapshots."""
     with connect(db_path) as conn:
         conn.executescript(
             """
+            CREATE TABLE IF NOT EXISTS metadata (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                source TEXT NOT NULL,
+                generated_at TEXT NOT NULL,
+                observation_time TEXT NOT NULL,
+                total_stations INTEGER NOT NULL,
+                valid_temp_stations INTEGER NOT NULL,
+                build_mode TEXT NOT NULL,
+                stats_json TEXT,
+                counties_json TEXT,
+                color_scale_json TEXT
+            );
+
             CREATE TABLE IF NOT EXISTS observations (
-                station_id TEXT NOT NULL,
+                station_id TEXT PRIMARY KEY,
                 station_name TEXT NOT NULL,
                 county TEXT,
                 town TEXT,
@@ -56,16 +85,15 @@ def init_db(db_path: Path | str) -> None:
                 category TEXT,
                 has_temp INTEGER NOT NULL DEFAULT 0,
                 source_mode TEXT NOT NULL,
-                ingested_at TEXT NOT NULL,
-                PRIMARY KEY (station_id, obs_time)
+                ingested_at TEXT NOT NULL
             );
 
-            CREATE INDEX IF NOT EXISTS idx_observations_obs_time
-                ON observations(obs_time);
             CREATE INDEX IF NOT EXISTS idx_observations_county
                 ON observations(county);
-            CREATE INDEX IF NOT EXISTS idx_observations_station
-                ON observations(station_id);
+            CREATE INDEX IF NOT EXISTS idx_observations_obs_time
+                ON observations(obs_time);
+            CREATE INDEX IF NOT EXISTS idx_observations_temperature
+                ON observations(temperature);
 
             CREATE TABLE IF NOT EXISTS snapshots (
                 obs_time TEXT NOT NULL,
@@ -84,18 +112,24 @@ def upsert_payload(
     db_path: Path | str,
     payload: Dict[str, Any],
     source_mode: Optional[str] = None,
+    replace: bool = True,
 ) -> int:
+    """
+    Persist normalized CWA payload into SQLite atomically.
+    When replace=True, replaces the current snapshot in a single transaction.
+    """
     init_db(db_path)
     metadata = payload.get("metadata") or {}
     mode = source_mode or metadata.get("build_mode") or "unknown"
-    now = datetime.now(timezone.utc).isoformat()
+    gen_at = metadata.get("generated_at") or ""
+    obs_time = str(metadata.get("observation_time") or "").strip()
     stations = payload.get("stations") or []
 
     rows = []
     for st in stations:
         station_id = str(st.get("station_id") or "").strip()
-        obs_time = str(st.get("obs_time") or metadata.get("observation_time") or "").strip()
-        if not station_id or not obs_time:
+        st_obs = str(st.get("obs_time") or obs_time).strip()
+        if not station_id:
             continue
         rows.append(
             (
@@ -106,7 +140,7 @@ def upsert_payload(
                 st.get("lat"),
                 st.get("lon"),
                 st.get("altitude"),
-                obs_time,
+                st_obs,
                 st.get("weather"),
                 st.get("temperature"),
                 st.get("humidity"),
@@ -120,14 +154,18 @@ def upsert_payload(
                 st.get("category"),
                 1 if st.get("has_temp") else 0,
                 mode,
-                now,
+                gen_at,
             )
         )
 
     with connect(db_path) as conn:
+        if replace:
+            conn.execute("DELETE FROM observations")
+            conn.execute("DELETE FROM metadata")
+
         conn.executemany(
             """
-            INSERT INTO observations (
+            INSERT OR REPLACE INTO observations (
                 station_id, station_name, county, town, lat, lon, altitude,
                 obs_time, weather, temperature, humidity, pressure, wind_speed,
                 wind_direction, gust_speed, precipitation, uv_index, color,
@@ -135,66 +173,65 @@ def upsert_payload(
             ) VALUES (
                 ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
             )
-            ON CONFLICT(station_id, obs_time) DO UPDATE SET
-                station_name=excluded.station_name,
-                county=excluded.county,
-                town=excluded.town,
-                lat=excluded.lat,
-                lon=excluded.lon,
-                altitude=excluded.altitude,
-                weather=excluded.weather,
-                temperature=excluded.temperature,
-                humidity=excluded.humidity,
-                pressure=excluded.pressure,
-                wind_speed=excluded.wind_speed,
-                wind_direction=excluded.wind_direction,
-                gust_speed=excluded.gust_speed,
-                precipitation=excluded.precipitation,
-                uv_index=excluded.uv_index,
-                color=excluded.color,
-                category=excluded.category,
-                has_temp=excluded.has_temp,
-                source_mode=excluded.source_mode,
-                ingested_at=excluded.ingested_at
             """,
             rows,
         )
 
-        obs_time = str(metadata.get("observation_time") or "")
+        valid_temp_count = sum(1 for r in rows if r[9] is not None)
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO metadata (
+                id, source, generated_at, observation_time, total_stations,
+                valid_temp_stations, build_mode, stats_json, counties_json, color_scale_json
+            ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                metadata.get("source") or "CWA O-A0003-001 (氣象觀測站-10分鐘綜觀氣象資料)",
+                gen_at,
+                obs_time,
+                len(rows),
+                valid_temp_count,
+                mode,
+                json.dumps(metadata.get("stats") or {}, ensure_ascii=False),
+                json.dumps(metadata.get("counties") or [], ensure_ascii=False),
+                json.dumps(metadata.get("color_scale") or COLOR_SCALE, ensure_ascii=False),
+            ),
+        )
+
         if obs_time:
             conn.execute(
                 """
-                INSERT INTO snapshots (
+                INSERT OR REPLACE INTO snapshots (
                     obs_time, source_mode, generated_at, station_count,
                     metadata_json, ingested_at
                 ) VALUES (?, ?, ?, ?, ?, ?)
-                ON CONFLICT(obs_time, source_mode) DO UPDATE SET
-                    generated_at=excluded.generated_at,
-                    station_count=excluded.station_count,
-                    metadata_json=excluded.metadata_json,
-                    ingested_at=excluded.ingested_at
                 """,
                 (
                     obs_time,
                     mode,
-                    metadata.get("generated_at"),
+                    gen_at,
                     len(rows),
                     json.dumps(metadata, ensure_ascii=False),
-                    now,
+                    gen_at,
                 ),
             )
     return len(rows)
 
 
 def row_count(db_path: Path | str) -> int:
+    """Return the total number of stations in the SQLite database."""
     init_db(db_path)
-    with connect(db_path) as conn:
+    with connect_readonly(db_path) as conn:
         return int(conn.execute("SELECT COUNT(*) FROM observations").fetchone()[0])
 
 
 def latest_observation_time(db_path: Path | str) -> Optional[str]:
+    """Return the primary observation timestamp recorded in metadata or observations."""
     init_db(db_path)
-    with connect(db_path) as conn:
+    with connect_readonly(db_path) as conn:
+        meta_row = conn.execute("SELECT observation_time FROM metadata WHERE id = 1").fetchone()
+        if meta_row and meta_row["observation_time"]:
+            return meta_row["observation_time"]
         row = conn.execute("SELECT MAX(obs_time) AS obs_time FROM observations").fetchone()
         return row["obs_time"] if row and row["obs_time"] else None
 
@@ -204,17 +241,18 @@ def query_sample(
     county: Optional[str] = None,
     limit: int = 5,
 ) -> List[Dict[str, Any]]:
+    """Query a sample of weather observation rows safely for inspection."""
     init_db(db_path)
     limit = max(1, min(int(limit), 50))
-    with connect(db_path) as conn:
+    with connect_readonly(db_path) as conn:
         if county:
             rows = conn.execute(
                 """
-                SELECT station_id, station_name, county, town, obs_time,
-                       temperature, humidity, wind_speed
+                SELECT station_id, station_name, county, town, lat, lon,
+                       obs_time, weather, temperature, humidity, wind_speed, precipitation
                 FROM observations
                 WHERE county = ?
-                ORDER BY obs_time DESC, station_name
+                ORDER BY station_name
                 LIMIT ?
                 """,
                 (county, limit),
@@ -222,10 +260,10 @@ def query_sample(
         else:
             rows = conn.execute(
                 """
-                SELECT station_id, station_name, county, town, obs_time,
-                       temperature, humidity, wind_speed
+                SELECT station_id, station_name, county, town, lat, lon,
+                       obs_time, weather, temperature, humidity, wind_speed, precipitation
                 FROM observations
-                ORDER BY obs_time DESC, station_name
+                ORDER BY station_name
                 LIMIT ?
                 """,
                 (limit,),
@@ -233,42 +271,24 @@ def query_sample(
     return [dict(row) for row in rows]
 
 
-def _latest_rows(conn: sqlite3.Connection) -> List[sqlite3.Row]:
-    return conn.execute(
-        """
-        SELECT o.*
-        FROM observations o
-        JOIN (
-            SELECT station_id, MAX(obs_time) AS max_obs_time
-            FROM observations
-            GROUP BY station_id
-        ) latest
-          ON latest.station_id = o.station_id
-         AND latest.max_obs_time = o.obs_time
-        ORDER BY
-            CASE WHEN o.temperature IS NULL THEN 1 ELSE 0 END,
-            o.temperature DESC,
-            o.county,
-            o.station_name
-        """
-    ).fetchall()
-
-
 def payload_from_db(db_path: Path | str) -> Dict[str, Any]:
+    """Reconstruct the complete frontend payload directly from SQLite."""
     init_db(db_path)
-    with connect(db_path) as conn:
-        rows = _latest_rows(conn)
-        snapshot = conn.execute(
+    with connect_readonly(db_path) as conn:
+        meta_row = conn.execute("SELECT * FROM metadata WHERE id = 1").fetchone()
+        obs_rows = conn.execute(
             """
-            SELECT *
-            FROM snapshots
-            ORDER BY obs_time DESC, ingested_at DESC
-            LIMIT 1
+            SELECT * FROM observations
+            ORDER BY
+                has_temp DESC,
+                CASE WHEN temperature IS NULL THEN -999 ELSE temperature END DESC,
+                county,
+                station_name
             """
-        ).fetchone()
+        ).fetchall()
 
     stations: List[Dict[str, Any]] = []
-    for row in rows:
+    for row in obs_rows:
         stations.append(
             {
                 "station_id": row["station_id"],
@@ -308,39 +328,127 @@ def payload_from_db(db_path: Path | str) -> Dict[str, Any]:
             "county": item["county"],
         }
 
-    avg_temp = (
-        round(sum(s["temperature"] for s in valid_temps) / len(valid_temps), 1)
-        if valid_temps else None
-    )
-    observation_time = max((s["obs_time"] for s in stations if s["obs_time"]), default=None)
-    counties = sorted({s["county"] for s in stations if s["county"]})
-    source_mode = rows[0]["source_mode"] if rows else "unknown"
-
-    metadata: Dict[str, Any] = {
-        "source": "CWA O-A0003-001 (氣象觀測站-10分鐘綜觀氣象資料)",
-        "generated_at": datetime.now(timezone.utc).isoformat(),
-        "observation_time": observation_time,
-        "total_stations": len(stations),
-        "valid_temp_stations": len(valid_temps),
-        "stats": {
-            "max_temperature": extreme(valid_temps, "temperature", max),
-            "min_temperature": extreme(valid_temps, "temperature", min),
-            "avg_temperature": avg_temp,
-            "max_wind_speed": extreme(valid_winds, "wind_speed", max),
-            "max_precipitation": extreme(valid_rains, "precipitation", max),
-        },
-        "counties": counties,
-        "color_scale": COLOR_SCALE,
-        "build_mode": source_mode,
-        "storage": "sqlite",
+    stats = {
+        "max_temperature": extreme(valid_temps, "temperature", max),
+        "min_temperature": extreme(valid_temps, "temperature", min),
+        "avg_temperature": (
+            round(sum(s["temperature"] for s in valid_temps) / len(valid_temps), 1)
+            if valid_temps else None
+        ),
+        "max_wind_speed": extreme(valid_winds, "wind_speed", max),
+        "max_precipitation": extreme(valid_rains, "precipitation", max),
     }
 
-    if snapshot:
+    counties = sorted({s["county"] for s in stations if s["county"]})
+    obs_time = (
+        meta_row["observation_time"]
+        if meta_row and meta_row["observation_time"]
+        else (stations[0]["obs_time"] if stations else "")
+    )
+    gen_at = (
+        meta_row["generated_at"]
+        if meta_row and meta_row["generated_at"]
+        else ""
+    )
+    source = (
+        meta_row["source"]
+        if meta_row and meta_row["source"]
+        else "CWA O-A0003-001 (氣象觀測站-10分鐘綜觀氣象資料)"
+    )
+    build_mode = (
+        meta_row["build_mode"]
+        if meta_row and meta_row["build_mode"]
+        else (obs_rows[0]["source_mode"] if obs_rows else "sqlite")
+    )
+
+    if meta_row and meta_row["stats_json"]:
         try:
-            snap_meta = json.loads(snapshot["metadata_json"])
-            if snap_meta.get("source"):
-                metadata["source"] = snap_meta["source"]
+            loaded_stats = json.loads(meta_row["stats_json"])
+            if loaded_stats:
+                stats = loaded_stats
         except Exception:
             pass
 
+    if meta_row and meta_row["counties_json"]:
+        try:
+            loaded_counties = json.loads(meta_row["counties_json"])
+            if loaded_counties:
+                counties = loaded_counties
+        except Exception:
+            pass
+
+    color_scale = COLOR_SCALE
+    if meta_row and meta_row["color_scale_json"]:
+        try:
+            loaded_scale = json.loads(meta_row["color_scale_json"])
+            if loaded_scale:
+                color_scale = loaded_scale
+        except Exception:
+            pass
+
+    metadata = {
+        "source": source,
+        "generated_at": gen_at,
+        "observation_time": obs_time,
+        "total_stations": len(stations),
+        "valid_temp_stations": len(valid_temps),
+        "stats": stats,
+        "counties": counties,
+        "color_scale": color_scale,
+        "build_mode": build_mode,
+        "storage": "sqlite",
+    }
+
     return {"metadata": metadata, "stations": stations}
+
+
+def verify_database(db_path: Path | str, county: str = "新竹縣", limit: int = 3) -> None:
+    """Print non-secret verification details for Gate 2 inspection."""
+    path = Path(db_path)
+    if not path.is_file():
+        print(f"[ERROR] Database file not found at: {path}")
+        return
+
+    count = row_count(path)
+    obs_time = latest_observation_time(path)
+    payload = payload_from_db(path)
+    meta = payload.get("metadata", {})
+    mode = meta.get("build_mode", "unknown")
+
+    print(f"=== SQLite Verification ({path.name}) ===")
+    print(f"Total stations (COUNT): {count}")
+    print(f"Observation time:       {obs_time}")
+    print(f"Build mode:             {mode}")
+    print(f"Storage backend:        {meta.get('storage')}")
+
+    samples = query_sample(path, county=county, limit=limit)
+    if not samples:
+        samples = query_sample(path, county=None, limit=limit)
+
+    print(f"\nSample query ({county if samples else 'All'}, {len(samples)} rows):")
+    for s in samples:
+        t_str = f"{s['temperature']}°C" if s['temperature'] is not None else "--"
+        h_str = f"{s['humidity']}%" if s['humidity'] is not None else "--"
+        w_str = f"{s['wind_speed']} m/s" if s['wind_speed'] is not None else "--"
+        print(
+            f"  - {s['station_name']} ({s['station_id']}) [{s['county']} {s['town'] or ''}]: "
+            f"Temp: {t_str}, RH: {h_str}, Wind: {w_str}, Weather: {s['weather'] or '--'}"
+        )
+
+
+def main_cli() -> None:
+    parser = argparse.ArgumentParser(description="Query and verify SQLite weather observations")
+    parser.add_argument(
+        "--db",
+        type=Path,
+        default=Path(__file__).resolve().parent.parent / "data.db",
+        help="Path to data.db",
+    )
+    parser.add_argument("--county", type=str, default="新竹縣", help="County to filter for sample")
+    parser.add_argument("--limit", type=int, default=3, help="Max sample rows to display")
+    args = parser.parse_args()
+    verify_database(args.db, county=args.county, limit=args.limit)
+
+
+if __name__ == "__main__":
+    main_cli()
