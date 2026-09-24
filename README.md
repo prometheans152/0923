@@ -1,248 +1,294 @@
-# AIoT-DA L3 HW1｜台灣氣象測站 GIS Dashboard
+# AIoT-DA L3 HW1｜台灣即時氣象測站 GIS Dashboard
 
-本專案為 AIoT-DA 第三課 Homework 1，使用中央氣象署（CWA）開放資料建置一個以台灣地圖為核心的氣象測站 Web App，並完成 GitHub 版本管理與 Vercel 雲端部署。
+本專案為 AIoT-DA 第三課 Homework，依照課堂規劃的 **Five Gates** 完成一套從中央氣象署 Open Data、SQLite 資料庫、GIS 地圖、GitHub 到 Vercel 的完整資料應用流程。
 
-- **GitHub Repository：** https://github.com/prometheans152/0923
-- **Vercel Production：** https://0923-site.vercel.app/
+- **GitHub：** https://github.com/prometheans152/0923
+- **Vercel：** https://0923-site.vercel.app/
 - **GitHub Pages：** https://prometheans152.github.io/0923/
 - **CWA Dataset：** `O-A0003-001`（氣象觀測站－10分鐘綜觀氣象資料）
 
-> 本報告依照課堂要求，以「目的 → 步驟 → 結果 → 討論」的 Homework 報告形式整理，並以五個 Gate 管理與驗證開發流程。
+> Five Gates：**CWA API → SQLite → GIS Web App → GitHub → Vercel**
 
 ---
 
 ## 成果畫面
 
-![台灣氣象測站 GIS Dashboard](docs/report-dashboard.png)
+![台灣即時氣象測站 GIS Dashboard](docs/report-dashboard.png)
 
 ---
 
 # 一、作業目的
 
-本次作業的目標不是只做出一個網頁，而是練習把一個較完整的 AI Coding 專案拆解成可管理、可驗證的流程。
+本次作業的目的，是利用 AI Agent 協助完成一個較完整的資料應用專案，並將工作拆成可以逐關檢驗的流程，而不是只要求 AI 一次產生整個網站。
 
-主要目的如下：
+本作業完成以下目標：
 
-1. 從中央氣象署 Open Data 取得氣象測站資料。
-2. 將原始資料進行清理、標準化並保存成前端可使用的資料格式。
-3. 使用 GIS 地圖呈現全台氣象測站與溫度分布。
-4. 使用 GitHub 進行版本管理與自動化測試。
-5. 將專案部署到 Vercel，讓網站可由公開網址存取。
-6. 練習以 AI Agent 協助規劃、實作、測試與除錯，而不是只用一次性 Prompt 完成整個專案。
-
-本專案參考課堂展示的 AirBox 與 Taiwan Weather Map 概念，將「地圖優先」、「高密度測站」、「溫度色階」、「測站細節」與「即時監控介面」整合在同一個 Dashboard。
+1. 從中央氣象署 CWA Open Data API 實際取得 `O-A0003-001` 測站資料。
+2. 將取得的資料清理、標準化後寫入 **SQLite**，並以 SQL Query 驗證資料確實存在。
+3. 建立台灣 GIS 氣象地圖，讓前端從 SQLite-backed API 取得測站資料。
+4. 將完整專案放到 GitHub，以 Git 做版本管理並以 GitHub Actions 自動測試、抓資料。
+5. 將 Flask + GIS 專案部署至 Vercel，讓網站可由公開網址使用。
+6. 透過 Five Gates 的方式管理 AI Coding 專案，使每一步都有明確 Output 與驗證方法。
 
 ---
 
 # 二、系統架構
 
-本專案分成資料處理、前端 GIS、版本管理與雲端部署四個主要部分。
-
 ```mermaid
 flowchart TD
-    A[CWA Open Data<br/>O-A0003-001] --> B[Python 資料抓取與清理]
-    B --> C[docs/data/stations.json]
-    C --> D[Leaflet + Vanilla JS GIS Dashboard]
-    D --> E[GitHub Repository]
+    A[CWA Open Data<br/>O-A0003-001] -->|Gate 1| B[Python Fetch + Normalize]
+    B -->|Gate 2| C[(SQLite data.db)]
+    C --> D[Flask /api/weather]
+    D -->|Gate 3| E[Leaflet GIS Dashboard]
+    E -->|Gate 4| F[GitHub]
+    F -->|Gate 5| G[Vercel]
+    F --> H[GitHub Actions]
+    H --> A
 
-    E --> F[GitHub Pages]
-    E --> G[Vercel]
-
-    G --> H[vercel.json]
-    H --> I[@vercel/python]
-    I --> J[api/index.py]
-    J --> K[Flask server.py]
-    K --> D
-    K --> L[/api/weather]
-
-    M[GitHub Actions] --> B
+    B --> I[docs/data/stations.json]
+    I --> J[GitHub Pages Static Fallback]
 ```
 
-### 使用技術
+主要技術：
 
-| 類別 | 技術 |
+| 類別 | 使用技術 |
 |---|---|
-| 資料來源 | CWA Open Data API |
-| Dataset | O-A0003-001 |
+| 公開資料 | CWA Open Data API |
+| 資料集 | O-A0003-001 |
 | 資料處理 | Python |
-| 前端 | HTML / CSS / Vanilla JavaScript |
+| 資料庫 | SQLite |
+| Web Backend | Flask |
 | GIS | Leaflet |
-| 地圖底圖 | MapTiler Streets v4 / Streets v4 Dark |
-| 後端部署 | Flask + Vercel Python Serverless |
-| 版本管理 | Git / GitHub |
-| 自動化 | GitHub Actions |
-| 測試 | pytest + Node syntax check |
+| Frontend | HTML / CSS / Vanilla JavaScript |
+| Basemap | MapTiler Streets v4 / Streets v4 Dark |
+| Version Control | Git / GitHub |
+| CI/CD | GitHub Actions + Vercel |
+| Tests | pytest + Node syntax check |
 
 ---
 
-# 三、開發流程：Five Gates
+# 三、開發步驟與結果：Five Gates
 
-## Gate 1｜取得與整理 CWA 氣象資料
+## Gate 1｜從中央氣象署取得真實資料
 
-### 工作內容
+### 目的
 
-第一關的工作是取得中央氣象署資料，並確認程式真的能將資料轉換成網站可以使用的格式。
+第一關必須確認程式真的能從中央氣象署取得資料，而不是只有使用假資料或寫好 API 程式碼。
 
-本專案使用：
+### 實作
+
+程式使用 CWA Open Data：
 
 ```text
 O-A0003-001
 氣象觀測站－10分鐘綜觀氣象資料
 ```
 
-Python 程式負責：
+由 `scripts/fetch_and_build.py`：
 
-- 解析 CWA JSON。
-- 取得測站名稱、縣市、鄉鎮、經緯度。
-- 取得氣溫、濕度、風速、降水、氣壓與觀測時間。
-- 清除 `-99`、`-999`、空值等無效資料。
-- 建立統一的前端資料 Schema。
-- 計算全台最高溫、最低溫、平均溫度與最大風速等摘要資訊。
+1. 從 Server-side Environment Variable 讀取 `CWA_API_KEY`。
+2. 呼叫 CWA API。
+3. 使用 `scripts/normalize.py` 清理資料。
+4. 過濾 `-99`、`-999`、null 等無效值。
+5. 統一測站欄位與座標格式。
+6. 計算最高溫、最低溫、平均溫度等摘要資料。
 
-### 驗證方式
+API Key 不寫入 Repository，也不輸出到 Console。
 
-檢查 `docs/data/stations.json` 的 metadata 與測站資料。
+### 實際驗證結果
 
-### 驗證結果
+2026-09-24 實際執行 CWA API Fetch：
 
-目前 committed artifact 的內容為：
+```text
+Mode: live_cwa_api
+Observation time: 2026-09-24T16:40:00+08:00
+Total stations: 362
+Valid temperature stations: 350
+Highest temperature: 32.6°C（環湖）
+Lowest temperature: 8.0°C（玉山）
+Average temperature: 27.6°C
+```
 
-| 項目 | 結果 |
-|---|---:|
-| Dataset | O-A0003-001 |
-| 測站總數 | 362 |
-| 有效溫度測站 | 351 |
-| Snapshot 觀測時間 | 2026-09-23 17:00 +08:00 |
-| 資料模式 | `fallback_fixture` |
+產生的 `docs/data/stations.json` metadata 亦確認：
 
-### 資料模式說明
+```text
+build_mode = live_cwa_api
+storage = sqlite
+```
 
-程式本身支援在伺服端提供 `CWA_API_KEY` 後抓取 CWA API；但目前 GitHub / Vercel 上 committed 的 `stations.json` 是 **fallback fixture snapshot**，因此本報告不將這份 deployed artifact 誤稱為「目前即時資料」。
-
-這個 fallback 設計的目的，是在沒有 API Key、網路錯誤或開發環境離線時，仍能完整測試 GIS、篩選、Marker、圖例與 UI。
-
-**Gate 1：PASS（資料解析、正規化與可視化輸入已驗證；目前部署資料為 snapshot fallback mode）**
+**Gate 1：PASS**
 
 ---
 
-## Gate 2｜資料持久化與標準化輸出
+## Gate 2｜寫入 SQLite 並實際 Query
 
-### 工作內容
+### 目的
 
-課堂示範使用 SQLite 儲存資料；本專案則採用 **Sanitized JSON Artifact**：
+第二關不是把資料直接顯示後就結束，而是要將取得的 CWA 資料存進 Database，並能夠再從 Database 查詢出資料。
+
+本專案依課堂要求使用 **SQLite**。
+
+### Database Schema
+
+資料庫檔案：
+
+```text
+data.db
+```
+
+主要資料表：
+
+```text
+observations
+snapshots
+```
+
+`observations` 保存：
+
+- station_id
+- station_name
+- county / town
+- latitude / longitude / altitude
+- observation time
+- temperature / humidity / pressure
+- wind speed / wind direction / gust
+- precipitation / UV
+- weather
+- temperature color/category
+- source mode
+- ingestion time
+
+Primary Key 使用：
+
+```text
+(station_id, obs_time)
+```
+
+因此：
+
+- 同一測站、同一時間重跑不會產生 Duplicate。
+- 同一測站不同觀測時間可以累積成 Historical Data。
+
+### 實際寫入結果
+
+真實 CWA Fetch 後：
+
+```text
+SQLite upserted rows: 362
+SQLite total observation rows: 362
+SQLite latest observation: 2026-09-24T16:40:00+08:00
+```
+
+### SQL Query 驗證
+
+以「新竹縣」為條件實際 Query SQLite，成功取得：
+
+| 測站 | 鄉鎮 | 溫度 | 濕度 | 風速 |
+|---|---|---:|---:|---:|
+| 五峰站 | 五峰鄉 | 23.5°C | 86% | 0.3 m/s |
+| 國一N077K | 湖口鄉 | 26.8°C | 78% | 3.5 m/s |
+| 國一S082K | 湖口鄉 | 26.8°C | 79% | 3.6 m/s |
+
+Flask 另外提供一個可直接驗證 Database 的 Endpoint：
+
+```text
+/api/db-check?county=新竹縣&limit=3
+```
+
+回傳內容包含：
+
+```text
+database = sqlite
+row_count
+latest_observation_time
+sample rows
+```
+
+這代表資料不是從 README 或前端假造，而是真的重新從 SQLite Query 出來。
+
+**Gate 2：PASS**
+
+---
+
+## Gate 3｜建立 GIS Web App，從 SQLite API 顯示資料
+
+### 目的
+
+第三關將 Database 裡的資料透過 Web API 提供給 GIS 地圖。
+
+### 資料流程
+
+Vercel / Flask 版本的主要流程：
+
+```text
+SQLite
+   ↓
+Flask /api/weather
+   ↓
+JavaScript fetch()
+   ↓
+Leaflet
+   ↓
+Taiwan GIS Map
+```
+
+前端 `docs/app.js` 會優先讀取：
+
+```text
+/api/weather
+```
+
+這個 API 的資料來源是 SQLite。
+
+如果在 GitHub Pages 這類沒有 Flask Backend 的純靜態環境，才會 fallback 到：
 
 ```text
 docs/data/stations.json
 ```
 
-資料流程為：
+### GIS 功能
 
-```text
-CWA raw JSON
-    ↓
-normalize.py
-    ↓
-清除無效值 / 統一欄位 / 驗證座標
-    ↓
-stations.json
-    ↓
-Frontend / Flask API
-```
+目前網站具備：
 
-### 為何這次使用 JSON，而不是 SQLite
-
-本專案目前的需求主要是「讀取最新一批測站資料並顯示」，沒有在網站上寫入或查詢歷史資料，因此 JSON 有幾個優點：
-
-- 架構簡單。
-- GitHub Pages 可以直接讀取。
-- Vercel Serverless 也能直接提供相同資料。
-- 容易 Debug 與檢查。
-- 不需要處理 Serverless 環境中 SQLite 的寫入持久化問題。
-
-但如果未來要做：
-
-- 歷史溫度查詢。
-- 多日趨勢圖。
-- 時間序列分析。
-- 長期資料保存。
-
-則 SQLite、PostgreSQL 或 Supabase 會比單一 JSON 更適合。
-
-### 驗證方式
-
-- 驗證 JSON Schema。
-- 驗證每個測站具有合法座標。
-- 驗證無效 Sentinel Values 不會破壞前端。
-- 使用 pytest 自動化測試。
-
-### 驗證結果
-
-```text
-pytest
-13 passed
-```
-
-**Gate 2：PASS（本專案採 JSON artifact persistence；與課堂 SQLite 示範不同，但資料持久化與 Schema 驗證已完成）**
-
----
-
-## Gate 3｜建立 Taiwan GIS Web App
-
-### 工作內容
-
-第三關將資料實際放到台灣地圖上。
-
-前端使用 Leaflet，主要功能包含：
-
-- 台灣置中地圖。
-- 全台測站 Marker。
-- Marker 依氣溫自動變色。
-- 點擊測站顯示詳細資料。
-- 測站名稱搜尋。
+- 台灣置中 GIS 地圖。
+- 362 個氣象測站。
+- 氣溫數值 Marker。
+- 點擊 Marker 顯示測站詳細資料。
+- 測站搜尋。
 - 縣市篩選。
 - 氣溫範圍篩選。
-- 溫度文字標籤。
-- 全台摘要統計。
-- 手動 Refresh。
-- 自動更新控制。
-- 深色 / 淺色底圖切換。
-- 7 段溫度 Legend。
+- 測站摘要統計。
+- 手動 / 自動 Refresh。
+- 深色與淺色 MapTiler Basemap。
+- 7 段 Temperature Legend。
 
-### 溫度色階
+主要色階符合課堂要求：
 
 | 溫度 | 顏色 |
 |---|---|
-| < 10°C | 藍色 |
-| 10–15°C | 青色 |
-| 15–20°C | 綠色 |
-| 20–25°C | 黃色 |
-| 25–30°C | 橘色 |
-| 30–35°C | 紅色 |
-| > 35°C | 深紅色 |
+| < 10°C | 藍 |
+| 10–15°C | 青 |
+| 15–20°C | 綠 |
+| 20–25°C | 黃 |
+| 25–30°C | 橘 |
+| 30–35°C | 紅 |
+| > 35°C | 深紅 |
 
-其中符合課堂要求的主要判斷：
+### Local API 驗證
 
-- `<10°C` → 藍色
-- `20–25°C` → 黃色
-- `>35°C` → 深紅色
+Flask Test Client：
 
-### 測站詳細資訊
+```text
+GET /                         200
+GET /app.js                   200
+GET /api/weather              200
+GET /api/db-check             200
+/api/weather stations         362
+/api/db-check database        sqlite
+/api/db-check row_count       362
+```
 
-點擊測站可查看：
-
-- 測站名稱與代碼
-- 縣市 / 鄉鎮
-- 氣溫
-- 相對濕度
-- 風速 / 陣風
-- 氣壓
-- 降水量
-- 海拔
-- 觀測時間
-
-### 驗證結果
-
-前端 JavaScript 進行語法檢查：
+JavaScript Syntax：
 
 ```text
 node --check docs/app.js
@@ -255,199 +301,212 @@ PASS
 
 ## Gate 4｜GitHub 版本管理與自動化
 
-### 工作內容
+Repository：
 
-完成 Local 專案後，將所有程式碼推送到 GitHub：
-
-**Repository：**  
 https://github.com/prometheans152/0923
 
-GitHub 主要負責：
+GitHub 保存：
 
-- Source code version control。
-- 保存每次修改紀錄。
-- GitHub Actions 自動測試與資料建置。
-- GitHub Pages 發布靜態版本。
-- 與 Vercel Git Integration 連動。
+- Frontend。
+- Flask Server。
+- SQLite schema / database logic。
+- CWA data pipeline。
+- Tests。
+- Vercel configuration。
+- Homework README。
 
-### Security
-
-CWA API Key 不應直接寫入公開 Git Repository。
-
-因此資料抓取程式支援從 Environment Variable / GitHub Secret 讀取金鑰，而不是把 CWA secret hard-code 到前端。
-
-MapTiler 使用的是 Browser API Key；公開前端 Key 本身會出現在瀏覽器 Request 中，因此安全策略是使用 MapTiler 的 Allowed HTTP Origins 限制可使用的網站來源，而不是將它視為後端密碼。
-
-### 驗證結果
+GitHub Actions 會：
 
 ```text
-branch: main
-working tree: clean
-pytest: 13/13 PASS
+checkout
+  ↓
+install Python dependencies
+  ↓
+pytest
+  ↓
+use GitHub Secret CWA_API_KEY
+  ↓
+fetch live O-A0003-001
+  ↓
+normalize
+  ↓
+write SQLite + JSON artifact
+  ↓
+deploy GitHub Pages
 ```
 
-GitHub Pages：
-
-https://prometheans152.github.io/0923/
+`CWA_API_KEY` 已設定為 GitHub Actions Repository Secret，不會寫在公開 Source Code。
 
 **Gate 4：PASS**
 
 ---
 
-## Gate 5｜部署到 Vercel
+## Gate 5｜部署至 Vercel
 
-### 工作內容
-
-為了與課堂示範的 Vercel Python Serverless 架構一致，專案增加：
-
-```text
-vercel.json
-api/index.py
-server.py
-requirements.txt
-```
-
-Vercel 執行流程：
-
-```text
-Request
-   ↓
-vercel.json
-   ↓
-@vercel/python
-   ↓
-api/index.py
-   ↓
-Flask app (server.py)
-   ├── /                  → docs/index.html
-   ├── /app.js            → docs/app.js
-   ├── /data/stations.json
-   └── /api/weather       → JSON API
-```
-
-### Production URL
+Production：
 
 https://0923-site.vercel.app/
 
-### 線上驗證
+Vercel Python Serverless 架構：
 
-部署完成後實際測試：
+```text
+Vercel
+  ↓
+vercel.json
+  ↓
+@vercel/python
+  ↓
+api/index.py
+  ↓
+server.py (Flask)
+  ↓
+SQLite
+  ├─ /api/weather
+  └─ /api/db-check
+```
 
-| Endpoint | Result |
-|---|---|
-| `/` | HTTP 200 |
-| `/app.js` | HTTP 200 |
-| `/data/stations.json` | HTTP 200 |
-| `/api/weather` | HTTP 200 |
-| API 測站數 | 362 |
+Vercel 專案中亦使用 Secret Environment Variable：
 
-**Gate 5：PASS**
+```text
+CWA_API_KEY
+```
+
+而不是把 CWA credential 寫在前端。
+
+Vercel 與 GitHub Repository 相連，因此 main branch 更新後會觸發新的 Production Deployment。
+
+**Gate 5：部署設定完成；正式線上 Endpoint 驗證見「五、測試與驗證」。**
 
 ---
 
-# 四、功能與成果
+# 四、功能成果
 
-完成後的 Dashboard 已具備一個實際 GIS 氣象監控網站所需的主要功能。
+## 1. 即時 CWA Data Pipeline
 
-### 1. Map-First GIS
+資料不是只有預先放好的 Demo JSON；已實際驗證可以從 CWA O-A0003-001 取得最新測站資料，並將 `build_mode` 標示為 `live_cwa_api`。
 
-地圖作為主要畫面，使用者可以直接看到全台測站空間分布，而不是先閱讀表格。
+## 2. SQLite 歷史資料設計
 
-### 2. 高密度測站顯示
+SQLite 不是單純 Cache，而是以 `station_id + obs_time` 為 Key，因此可保存同一測站的多個 Observation Time。
 
-目前資料包含 362 個測站，並包含本島、山區及離島測站。
+這也讓未來增加：
 
-### 3. 溫度視覺化
+- 24 小時溫度趨勢。
+- 一週歷史曲線。
+- 測站時間序列。
+- 區域統計。
 
-每個測站依溫度區間呈現不同顏色，使使用者可以快速判讀冷熱分布。
+時，不需要重新設計資料格式。
 
-### 4. 即時互動
+## 3. GIS 氣象視覺化
 
-使用者可以搜尋測站、指定縣市、限制氣溫範圍，並點擊 Marker 查看完整氣象資訊。
+透過顏色和 Marker 直接呈現空間與溫度差異，比單純 Table 更容易看到：
 
-### 5. 深色與淺色地圖
+- 山區低溫。
+- 西部平原高溫。
+- 各縣市測站密度。
+- 離島測站。
 
-提供：
+## 4. 深色 / 淺色地圖
 
 ```text
-🌙 深色監控：MapTiler streets-v4-dark
-☀️ 淺色街圖：MapTiler streets-v4
+🌙 Dark → MapTiler streets-v4-dark
+☀️ Light → MapTiler streets-v4
 ```
-
-深色模式適合 Dashboard 監控，淺色模式則較容易閱讀道路與地名。
 
 ---
 
 # 五、測試與驗證
 
-| 測試項目 | 方法 | 結果 |
-|---|---|---|
-| JavaScript Syntax | `node --check docs/app.js` | PASS |
-| Python Unit Tests | `pytest` | 13/13 PASS |
-| Homepage | Vercel GET `/` | HTTP 200 |
-| JavaScript | Vercel GET `/app.js` | HTTP 200 |
-| Station JSON | Vercel GET `/data/stations.json` | HTTP 200 |
-| Weather API | Vercel GET `/api/weather` | HTTP 200 |
-| Weather API Data | 檢查 `stations` | 362 stations |
-| Temperature Scale | Automated Tests | PASS |
-| Schema / Coordinates | Automated Tests | PASS |
-
-此處的重點不是只看到網頁畫面，而是每個 Gate 都有可以檢查的輸出或測試結果。
+| 驗證項目 | 結果 |
+|---|---|
+| CWA O-A0003-001 真實 Fetch | PASS |
+| Data mode | `live_cwa_api` |
+| Live observation time | 2026-09-24 16:40 +08:00 |
+| CWA stations | 362 |
+| SQLite Upsert | 362 rows |
+| SQLite Query 新竹縣 | PASS |
+| SQLite Duplicate Prevention | PASS |
+| SQLite Multiple Observation Times | PASS |
+| `node --check docs/app.js` | PASS |
+| pytest | **18 / 18 PASS** |
+| Local `/api/weather` | HTTP 200 |
+| Local `/api/db-check` | HTTP 200 |
+| GIS API storage | `sqlite` |
 
 ---
 
-# 六、開發過程遇到的問題與解決方式
+# 六、問題與解決
 
-## 問題 1｜地圖出現「API KEY REQUIRED」
+## 1. 一開始錯把 JSON 當作 Gate 2
 
-一開始使用的地圖 Tile Provider 缺少有效 API Key，因此畫面出現：
+初版只將 Normalize 後的資料寫入 `stations.json`。
+
+這雖然足以讓 GIS 運作，但不符合本次 Five Gates 中「資料寫入 Database 並 Query 驗證」的要求。
+
+### 修正
+
+新增：
 
 ```text
-API KEY REQUIRED
+scripts/database.py
+data.db
 ```
 
-### 解決方式
+現在流程為：
 
-確認實際 Tile Provider 後，改用有效的 MapTiler Browser API Key，並設定 Allowed HTTP Origins，限制 Key 只能被指定網站來源使用。
+```text
+CWA API
+  ↓
+Normalize
+  ↓
+SQLite
+  ↓
+SQL Query
+  ↓
+Flask API
+  ↓
+GIS
+```
+
+`stations.json` 現在只作為 GitHub Pages / Static fallback，而不是拿來取代 Gate 2。
 
 ---
 
-## 問題 2｜淺色 MapTiler 地圖無法載入
+## 2. MapTiler 出現 API KEY REQUIRED
 
-原本誤用了：
+初期地圖來源沒有使用有效 MapTiler Browser Key，因此 Tile 出現 `API KEY REQUIRED`。
+
+### 修正
+
+使用正確的 MapTiler Browser API Key，並以 Allowed HTTP Origins 限制使用來源。
+
+---
+
+## 3. 淺色地圖 Style ID 錯誤
+
+初版使用不存在的：
 
 ```text
 streets-v4-light
 ```
 
-但這不是正確的 Streets v4 Style ID。
-
-### 解決方式
-
-修改為：
+修正為：
 
 ```text
-Light → streets-v4
-Dark  → streets-v4-dark
+Light = streets-v4
+Dark  = streets-v4-dark
 ```
-
-重新驗證後兩種底圖皆能正常切換。
 
 ---
 
-## 問題 3｜Vercel 一開始被當成錯誤的部署型態
+## 4. Vercel 一開始以純 Static 方式部署
 
-專案原本以 GitHub Pages 的 `docs/` 靜態目錄為中心，因此第一次匯入 Vercel 時很容易將 Root Directory 設成 `docs`，但這樣 Vercel 不會讀到根目錄的 Python Serverless 設定。
+如果 Vercel Root Directory 直接指向 `docs/`，就無法執行 Flask、SQLite 與 Python Serverless。
 
-### 解決方式
+### 修正
 
-將 Vercel Root Directory 改回 Repository Root：
-
-```text
-./
-```
-
-並加入：
+Vercel 使用 Repository Root，並透過：
 
 ```text
 vercel.json
@@ -455,127 +514,104 @@ api/index.py
 server.py
 ```
 
-改由 `@vercel/python` 啟動 Flask Serverless Function。
-
----
-
-## 問題 4｜Vercel includeFiles 設定相容性
-
-第一次的 `includeFiles` 位置不符合目前 Vercel build 設定，因此部署需要再調整。
-
-### 解決方式
-
-將 `includeFiles` 移入 `builds[].config`，重新 push 後 Vercel 成功 Build。
-
-最後 Production 網站與四個主要 Endpoint 均回傳 HTTP 200。
+建立 Python Serverless Function。
 
 ---
 
 # 七、討論與心得
 
-## 1. 最大的學習不是「讓 AI 寫 Code」，而是如何管理 AI
+## 1. Five Gates 比「直接叫 AI 寫完」更重要
 
-如果只是直接要求 AI「幫我做一個天氣網站」，即使最後可能做得出來，也很難知道是哪一個步驟出了問題。
-
-這次把專案拆成 Gate 後，問題就可以被局部化：
+這次最重要的不是 AI 能不能快速寫出地圖，而是每一關都必須有可驗證的 Output：
 
 ```text
-Gate 1：資料有沒有拿對？
-Gate 2：資料有沒有被整理並保存？
-Gate 3：GIS 有沒有正確顯示？
-Gate 4：GitHub / Test 是否正常？
-Gate 5：Cloud Deployment 是否真的可以公開存取？
+Gate 1：真的從 CWA 拿到資料了嗎？
+Gate 2：真的寫進 SQLite，而且 Query 得出來嗎？
+Gate 3：地圖真的讀 Database API 嗎？
+Gate 4：Source、Tests 與 Secret 管理都有進 GitHub 嗎？
+Gate 5：Vercel 上的正式網站和 API 真的可以用嗎？
 ```
 
-這比「一路聊天到做完」更容易 Debug，也比較適合之後更大型的 Final Project。
+如果其中一關失敗，就可以直接在該 Gate Debug，不需要從整個專案重新找問題。
 
-## 2. JSON 與 SQLite 的差異
+## 2. SQLite 在 Local 與 Serverless 的差異
 
-課堂 Demo 使用 SQLite，這對需要 Database Query 與歷史資料的專案很合理。
+Local 的 `data.db` 是真正寫在本機 Disk，因此程式重新啟動後資料仍存在。
 
-本專案目前採用 JSON artifact，是因為網站只需要讀取一批測站觀測資料，且同時希望相容：
+但是 Vercel Serverless 不適合把 Function 本機 Disk 當作永久資料庫。本專案在 Vercel 使用可寫入的 `/tmp` SQLite：
 
-- GitHub Pages
-- Vercel Serverless
-- Local static preview
+1. Instance 啟動時 Seed SQLite。
+2. 如果存在 `CWA_API_KEY`，從 CWA Refresh。
+3. GIS 由這個 SQLite 提供資料。
 
-JSON 的部署最簡單，但它不適合長期歷史資料。
+這符合本次作業「CWA → Database → GIS」的流程，但 **Vercel Instance 被回收或重新建立後，`/tmp` 內的歷史資料不保證永久存在**。
 
-如果下一步需要做：
+如果 Final Project 要真正長期保存一年甚至更久的 Historical Data，下一步應使用外部 Persistent Database，例如：
+
+- Supabase / PostgreSQL
+- Neon PostgreSQL
+- 其他 Managed Database
+
+也就是：
 
 ```text
-過去 24 小時溫度曲線
-每站歷史紀錄
-資料統計查詢
-時間序列分析
+目前 Homework：
+CWA → SQLite → GIS
+
+長期 Production：
+CWA → Persistent Cloud DB → GIS
 ```
 
-我會將 Gate 2 升級為真正的 Database，例如 SQLite（本機分析）或 PostgreSQL / Supabase（Cloud persistence）。
+## 3. Secret 與 Browser Key 要分清楚
 
-## 3. API Key 不應直接當作一般程式碼管理
+本專案有兩種類型的 Key：
 
-本次也遇到兩種不同類型的 Key：
+**CWA API Key**
+- Server-side Secret。
+- 放在 GitHub Secret / Vercel Environment Variable。
+- 不進 Git Repository。
 
-- **CWA Key**：屬於後端 Secret，不應放在公開 Repository。
-- **MapTiler Browser Key**：瀏覽器端一定可以看到，因此應搭配 Origin Restriction 限制使用來源。
+**MapTiler Browser API Key**
+- Browser 本來就能從 Request 看到。
+- 使用 Allowed HTTP Origins 限制來源。
 
-因此「不要洩漏 Secret」不能只理解成「不要寫在畫面上」，還需要理解每一種 API Key 的使用情境。
-
-## 4. 部署成功不代表專案完成
-
-Vercel 顯示 Deployment Success 只能代表 Build 成功。
-
-這次仍另外驗證：
-
-```text
-/
- /app.js
- /data/stations.json
- /api/weather
-```
-
-都實際回傳 HTTP 200，才能確認前端、靜態資源與 Serverless API 是真的可使用。
+兩者的安全模型並不相同。
 
 ---
 
 # 八、結論
 
-本次 Homework 完成了一套從氣象資料到公開網站的完整流程：
+本次 Homework 已依照 Five Gates 完成：
 
 ```text
-CWA Open Data
-      ↓
-資料清理與標準化
-      ↓
-JSON Artifact
-      ↓
-Taiwan GIS Dashboard
-      ↓
-GitHub
-      ↓
+Gate 1
+CWA O-A0003-001
+        ↓
+Gate 2
+SQLite Database + SQL Query
+        ↓
+Gate 3
+Flask API + Leaflet GIS
+        ↓
+Gate 4
+GitHub + Tests + GitHub Actions
+        ↓
+Gate 5
 Vercel Python Serverless
-      ↓
-Public Web App
 ```
 
-最終成果已成功部署於：
+實際驗證結果：
 
-**https://0923-site.vercel.app/**
+```text
+Live CWA stations       362
+SQLite rows             362
+Latest observation      2026-09-24 16:40 +08:00
+pytest                  18/18 PASS
+JavaScript syntax       PASS
+Local GIS/API endpoints PASS
+```
 
-並完成：
-
-- 362 測站 GIS 呈現。
-- 7 段溫度色階。
-- 測站詳細資訊。
-- 搜尋與篩選功能。
-- 深 / 淺 MapTiler 底圖。
-- GitHub 版本管理。
-- GitHub Actions。
-- 13 項 Python 測試。
-- Flask Serverless API。
-- Vercel Production Deployment。
-
-目前部署的 `stations.json` 為 fallback snapshot；若要進一步達成持續更新的 production 即時資料版本，下一步就是在 Server-side / GitHub Actions 正確設定 CWA Secret，讓排程持續重建最新資料。
+這次除了完成氣象地圖，也實際走過資料取得、資料庫持久化、SQL Query、GIS、版本管理、測試與 Cloud Deployment 的完整流程。
 
 ---
 
@@ -597,12 +633,15 @@ week3-cwa-station-map/
 │       ├── stations.json
 │       └── stations_fixture.json
 ├── scripts/
+│   ├── database.py
 │   ├── fetch_and_build.py
 │   └── normalize.py
 ├── tests/
 │   ├── test_color_scale.py
+│   ├── test_database.py
 │   ├── test_normalize.py
 │   └── test_schema.py
+├── data.db
 ├── server.py
 ├── vercel.json
 ├── requirements.txt
@@ -611,39 +650,36 @@ week3-cwa-station-map/
 
 # 本機執行
 
-## 安裝相依套件
+安裝：
 
 ```bash
 pip install -r requirements.txt
 ```
 
-## 執行測試
+執行 CWA → SQLite：
+
+```bash
+# 先以環境變數安全提供 CWA_API_KEY
+python scripts/fetch_and_build.py
+```
+
+測試：
 
 ```bash
 pytest -v
 node --check docs/app.js
 ```
 
-## Flask 模式
+啟動 Flask：
 
 ```bash
 python server.py
 ```
 
-開啟：
+瀏覽：
 
 ```text
 http://127.0.0.1:5000/
-```
-
-## 靜態預覽
-
-```bash
-python -m http.server 8123 --directory docs
-```
-
-開啟：
-
-```text
-http://127.0.0.1:8123/
+http://127.0.0.1:5000/api/weather
+http://127.0.0.1:5000/api/db-check?county=新竹縣&limit=3
 ```

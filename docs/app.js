@@ -156,26 +156,34 @@ async function loadData(showToastMsg = true) {
   elements.syncStatus.textContent = '更新中...';
   elements.btnRefresh.classList.add('loading');
 
-  const cacheBustUrl = `data/stations.json?t=${Date.now()}`;
+  const stamp = Date.now();
   let payload = null;
 
   try {
-    const res = await fetch(cacheBustUrl);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    payload = await res.json();
-  } catch (err) {
-    console.warn('[WARN] Primary stations.json fetch failed, trying fallback fixture:', err);
+    // Gate 3 primary path on Vercel: Flask reads the latest observations from SQLite.
+    const apiRes = await fetch(`/api/weather?t=${stamp}`, { cache: 'no-store' });
+    if (!apiRes.ok) throw new Error(`HTTP ${apiRes.status}`);
+    payload = await apiRes.json();
+  } catch (apiErr) {
+    console.warn('[WARN] SQLite API unavailable; trying static stations.json:', apiErr);
     try {
-      const fixRes = await fetch('data/stations_fixture.json');
-      if (fixRes.ok) {
-        payload = await fixRes.json();
-        // If fixture is raw GeoJSON, convert it on the fly
-        if (payload.features && !payload.stations) {
-          payload = convertGeoJsonToSchema(payload);
+      // GitHub Pages/static fallback: generated from the same normalized CWA snapshot.
+      const jsonRes = await fetch(`data/stations.json?t=${stamp}`, { cache: 'no-store' });
+      if (!jsonRes.ok) throw new Error(`HTTP ${jsonRes.status}`);
+      payload = await jsonRes.json();
+    } catch (jsonErr) {
+      console.warn('[WARN] stations.json unavailable; trying bundled fixture:', jsonErr);
+      try {
+        const fixRes = await fetch('data/stations_fixture.json', { cache: 'no-store' });
+        if (fixRes.ok) {
+          payload = await fixRes.json();
+          if (payload.features && !payload.stations) {
+            payload = convertGeoJsonToSchema(payload);
+          }
         }
+      } catch (fixErr) {
+        console.error('[ERROR] SQLite API, stations.json, and fixture all failed:', fixErr);
       }
-    } catch (fixErr) {
-      console.error('[ERROR] Both live and fixture load failed:', fixErr);
     }
   }
 

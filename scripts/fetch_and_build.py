@@ -1,8 +1,10 @@
 """
 Fetch and build script for Taiwan CWA Weather Station Dashboard.
-Safely queries CWA API dataset O-A0003-001 or falls back to bundled fixture.
+Gate 1: fetch/normalize CWA O-A0003-001.
+Gate 2: persist the normalized snapshot into SQLite.
 NEVER prints, leaks, or logs secret keys.
 """
+from __future__ import annotations
 
 import argparse
 import json
@@ -10,114 +12,103 @@ import os
 from pathlib import Path
 import sys
 from typing import Optional
-import urllib.request
 import urllib.error
+import urllib.request
 
-# Ensure scripts directory is on sys.path
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = SCRIPT_DIR.parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
+from database import latest_observation_time, query_sample, row_count, upsert_payload
 from normalize import normalize_cwa_dataset
 
 CWA_API_URL = "https://opendata.cwa.gov.tw/api/v1/rest/datastore/O-A0003-001"
 
 
 def get_cwa_api_key() -> Optional[str]:
-    """
-    Safely retrieves CWA API key from environment or local .env file.
-    Does NOT print or log the key.
-    """
-    # 1. Environment variable (e.g. GitHub Actions secret, user terminal export)
+    """Safely retrieve CWA API key from environment or local .env."""
     for env_name in ["CWA_API_KEY", "CWA_API_TOKEN", "CWA_TOKEN", "CWB_API_KEY"]:
         val = os.environ.get(env_name)
         if val and val.strip() and not val.strip().startswith("YOUR_"):
             return val.strip()
 
-    # 2. Local .env file in project root
-    env_paths = [
-        PROJECT_ROOT / ".env",
-    ]
-    for p in env_paths:
-        if p.is_file():
-            try:
-                with open(p, "r", encoding="utf-8") as f:
-                    for line in f:
-                        line = line.strip()
-                        if not line or line.startswith("#"):
-                            continue
-                        if "=" in line:
-                            k, v = line.split("=", 1)
-                            k = k.strip()
-                            v = v.strip().strip("\"'")
-                            if k in ["CWA_API_KEY", "CWA_API_TOKEN", "CWA_TOKEN"] and v and not v.startswith("YOUR_"):
-                                return v
-            except Exception:
-                pass
-
+    env_path = PROJECT_ROOT / ".env"
+    if env_path.is_file():
+        try:
+            with env_path.open("r", encoding="utf-8") as handle:
+                for line in handle:
+                    line = line.strip()
+                    if not line or line.startswith("#") or "=" not in line:
+                        continue
+                    key, value = line.split("=", 1)
+                    key = key.strip()
+                    value = value.strip().strip('"').strip("'")
+                    if (
+                        key in ["CWA_API_KEY", "CWA_API_TOKEN", "CWA_TOKEN"]
+                        and value
+                        and not value.startswith("YOUR_")
+                    ):
+                        return value
+        except Exception:
+            pass
     return None
 
 
 def fetch_from_cwa(api_key: str) -> Optional[dict]:
-    """
-    Fetches raw CWA O-A0003-001 dataset using urllib (no external deps required).
-    """
+    """Fetch raw CWA O-A0003-001 dataset without logging the credential."""
     url = f"{CWA_API_URL}?Authorization={api_key}&format=JSON"
     req = urllib.request.Request(
         url,
-        headers={"User-Agent": "AIoT-WeatherStationDashboard/1.0", "Accept": "application/json"}
+        headers={
+            "User-Agent": "AIoT-WeatherStationDashboard/1.0",
+            "Accept": "application/json",
+        },
     )
     try:
         print("[INFO] Fetching live data from CWA API (O-A0003-001)...")
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            if resp.status == 200:
-                payload = json.loads(resp.read().decode("utf-8"))
-                if payload.get("success") in [True, "true"]:
-                    return payload
-                else:
-                    print(f"[WARN] CWA API returned non-success response: {payload.get('message', 'unknown')}")
-            else:
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            if resp.status != 200:
                 print(f"[WARN] CWA API responded with HTTP status {resp.status}")
-    except urllib.error.HTTPError as e:
-        print(f"[WARN] HTTP error fetching CWA data: HTTP {e.code}")
-    except urllib.error.URLError as e:
-        print(f"[WARN] Network error connecting to CWA API: {e.reason}")
-    except Exception as e:
-        print(f"[WARN] Unexpected error fetching CWA data: {type(e).__name__}")
-
+                return None
+            payload = json.loads(resp.read().decode("utf-8"))
+            if payload.get("success") in [True, "true"]:
+                return payload
+            print("[WARN] CWA API returned a non-success response.")
+    except urllib.error.HTTPError as exc:
+        print(f"[WARN] HTTP error fetching CWA data: HTTP {exc.code}")
+    except urllib.error.URLError as exc:
+        print(f"[WARN] Network error connecting to CWA API: {exc.reason}")
+    except Exception as exc:
+        print(f"[WARN] Unexpected error fetching CWA data: {type(exc).__name__}")
     return None
 
 
 def load_fixture(fixture_path: Path) -> dict:
-    """Loads bundled fallback fixture."""
     if not fixture_path.is_file():
         raise FileNotFoundError(f"Fixture file not found at: {fixture_path}")
-    with open(fixture_path, "r", encoding="utf-8") as f:
-        return json.load(f)
+    with fixture_path.open("r", encoding="utf-8") as handle:
+        return json.load(handle)
 
 
 def build_dataset(
     output_path: Path,
     fixture_path: Path,
+    database_path: Path,
     fixture_only: bool = False,
 ) -> dict:
-    """
-    Orchestrates fetching (or fixture loading), normalizing, and saving dataset.
-    """
     raw_data = None
     data_source_mode = "fixture"
 
     if not fixture_only:
         api_key = get_cwa_api_key()
         if api_key:
-            print("[INFO] Local CWA API key detected in safe environment.")
+            print("[INFO] CWA API key detected in the secure environment.")
             raw_data = fetch_from_cwa(api_key)
             if raw_data:
                 data_source_mode = "live_cwa_api"
         else:
-            print("[INFO] No CWA API key found in environment or local .env.")
-            print("[INFO] Using bundled high-fidelity fallback fixture.")
+            print("[INFO] No CWA API key found; using bundled fallback fixture.")
     else:
         print("[INFO] --fixture-only specified; skipping network fetch.")
 
@@ -128,53 +119,74 @@ def build_dataset(
 
     normalized = normalize_cwa_dataset(raw_data)
     normalized["metadata"]["build_mode"] = data_source_mode
+    normalized["metadata"]["storage"] = "sqlite"
 
-    # Ensure output directory exists
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(output_path, "w", encoding="utf-8") as f:
-        json.dump(normalized, f, ensure_ascii=False, indent=2)
+    with output_path.open("w", encoding="utf-8") as handle:
+        json.dump(normalized, handle, ensure_ascii=False, indent=2)
+
+    inserted = upsert_payload(database_path, normalized, data_source_mode)
 
     total_st = normalized["metadata"]["total_stations"]
     valid_st = normalized["metadata"]["valid_temp_stations"]
     max_t = normalized["metadata"]["stats"]["max_temperature"]
     min_t = normalized["metadata"]["stats"]["min_temperature"]
     avg_t = normalized["metadata"]["stats"]["avg_temperature"]
+    obs_time = normalized["metadata"].get("observation_time")
 
-    print(f"[SUCCESS] Built station dataset -> {output_path}")
+    print(f"[SUCCESS] Built station JSON -> {output_path}")
+    print(f"[SUCCESS] Persisted snapshot to SQLite -> {database_path}")
     print(f"          - Mode: {data_source_mode}")
-    print(f"          - Total stations: {total_st} (Valid temp: {valid_st})")
-    print(f"          - Temp range: {min_t.get('value')}°C ({min_t.get('station_name')}) ~ {max_t.get('value')}°C ({max_t.get('station_name')})")
+    print(f"          - Observation time: {obs_time}")
+    print(f"          - Snapshot stations: {total_st} (Valid temp: {valid_st})")
+    print(
+        f"          - Temp range: {min_t.get('value')}°C ({min_t.get('station_name')}) "
+        f"~ {max_t.get('value')}°C ({max_t.get('station_name')})"
+    )
     print(f"          - Avg temp: {avg_t}°C")
-
+    print(f"          - SQLite upserted rows: {inserted}")
+    print(f"          - SQLite total observation rows: {row_count(database_path)}")
+    print(f"          - SQLite latest observation: {latest_observation_time(database_path)}")
+    sample = query_sample(database_path, county="新竹縣", limit=3)
+    if sample:
+        print("[VERIFY] SQLite query sample (新竹縣):")
+        for row in sample:
+            print(
+                f"          {row['station_name']} | {row['obs_time']} | "
+                f"{row['temperature']}°C | RH {row['humidity']}"
+            )
     return normalized
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Fetch and normalize CWA O-A0003-001 weather stations")
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Fetch CWA O-A0003-001, normalize it, and persist it in SQLite"
+    )
     parser.add_argument(
         "--output",
         "-o",
         type=Path,
         default=PROJECT_ROOT / "docs" / "data" / "stations.json",
-        help="Target output JSON path (default: docs/data/stations.json)",
     )
     parser.add_argument(
         "--fixture",
         "-f",
         type=Path,
         default=PROJECT_ROOT / "docs" / "data" / "stations_fixture.json",
-        help="Fallback fixture path (default: docs/data/stations_fixture.json)",
     )
     parser.add_argument(
-        "--fixture-only",
-        action="store_true",
-        help="Force using fixture without querying CWA API",
+        "--database",
+        "-d",
+        type=Path,
+        default=PROJECT_ROOT / "data.db",
     )
+    parser.add_argument("--fixture-only", action="store_true")
     args = parser.parse_args()
 
     build_dataset(
         output_path=args.output,
         fixture_path=args.fixture,
+        database_path=args.database,
         fixture_only=args.fixture_only,
     )
 
