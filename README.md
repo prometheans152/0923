@@ -263,7 +263,7 @@ node --check docs/app.js  -> 結束碼 0 (PASS)
 1. 程式碼與版本管理：完整程式碼、測試、靜態資源與設定檔均由 Git 進行追蹤。敏感檔案（如 `.env`, `api_key.txt`）由 `.gitignore` 明確排除，絕不上傳機敏資訊。
 2. 撰寫自動化工作流 `.github/workflows/update-and-deploy.yml`：
    - 定時排程（每 30 分鐘執行一次）與手動觸發（`workflow_dispatch`）。
-   - 工作流預期讀取 Repository Secret `secrets.CWA_API_KEY`；若未配置該密鑰，建置腳本具備備援容錯機制，不會導致建置崩潰（秉持誠實原則，工作流配置期待該 Secret，不無端捏造已驗證遠端設定）。
+   - 工作流設定為預期讀取 Repository Secret `secrets.CWA_API_KEY`（若遠端 Repository Secret 有配置）；誠實說明：我們未獨立驗證遠端 GitHub Repository Secret 之設定狀態。若未配置該密鑰，建置腳本具備備援容錯機制，不會導致建置崩潰。
    - 自動執行 `fetch_and_build.py` 重建 `stations.json` 與 `data.db`。
    - 執行品質門檻驗證：`pytest -v`（全套 22 個測試）與 `node --check docs/app.js`。
    - 自動上傳 `docs/` 目錄並發布至 GitHub Pages。
@@ -438,17 +438,18 @@ tests/test_schema.py::test_generated_stations_json_schema PASSED         [100%]
 
 ## 2. SQLite 在本地與 Serverless 雲端架構的差異與取捨
 本作業在 Gate 2 與 Gate 5 面臨了 SQLite 特性與雲端架構的核心取捨：
-- **Local 本地端：** `data.db` 存在於本地實體檔案系統，支援隨時寫入與持續累積歷史紀錄。
+- **Local 本地端：** 專案根目錄的 `data.db` 為可寫入資料庫。依現有實作架構，`observations` 表以 `station_id` 為主鍵，維護當前各測站的最新即時觀測快照與原地更新狀態（不無限制持續堆疊所有歷次歷史測站列，避免體積暴增）；而 `snapshots` 表則以 `(obs_time, source_mode)` 為複合主鍵，保存歷次快照的摘要與歷史詮釋資料（Metadata）。
 - **Vercel Serverless 端：** Serverless Function 為無狀態（Stateless）容器，其短暫容器重啟或回收後，本地寫入無法持久保存。
 - **最佳實踐決策：**
   遵循課堂示範要求，將 `data.db` 定位為**隨專案打包的結構化唯讀快照（Bundled SQLite Snapshot）**。此做法確保了 Serverless 端具備真實的 SQLite 查詢路徑，同時具備極高讀取效能與零額外雲端資料庫維護成本。
-  針對長期歷史資料累積（如 24 小時溫度變化圖表、歷年極值分析），未來架構應演進為串接雲端 PostgreSQL / Supabase / Neon，以達成跨容器的持久化寫入。
+  針對長期歷史資料累積（如 24 小時全測站逐時溫度變化圖表、歷年極值分析），未來架構應演進為串接外部託管資料庫（如 PostgreSQL / Supabase / Neon），以達成跨實例、跨容器的持久化寫入。
 
 ## 3. 雙層金鑰安全隔離設計
 系統涉及兩種不同性質的金鑰，採取了嚴格隔離策略：
 1. **CWA API Key（Server-side Secret）：**
-   - 屬於私人機密授權碼，絕不上傳 Git，只存在於本機受保護環境變數（或受保護之 `.env` / `api_key.txt`）與 GitHub Secrets。
-   - 後端對 CWA 的請求全部在伺服端完成，前端永遠接觸不到此金鑰。
+   - 屬於私人機密授權碼，絕不上傳 Git。金鑰僅儲存於本機受保護的環境變數、`.env` 或 `api_key.txt` 中（均已納入 `.gitignore` 嚴格保護）。
+   - GitHub Actions CI 工作流程設定為**預期讀取 `secrets.CWA_API_KEY`（若遠端 Repository Secret 有配置）**；在此誠實說明：我們並未獨立驗證遠端 GitHub Repository 的 Secret 配置狀態。若遠端未設定該 Secret，腳本亦具備平滑降級為備援資料的容錯機制，確保 CI 測試穩定通過。
+   - 資料抓取與後端對 CWA 的請求全部在伺服端完成，前端瀏覽器永遠接觸不到此金鑰。
 2. **MapTiler Browser API Key（Client-side Token）：**
    - 用於地圖底圖向量圖資請求，屬於公開客戶端 Key。
    - 透過 MapTiler 雲端後台設定 **Allowed HTTP Origins**，僅允許指定網域與 localhost 呼叫，防止被未授權濫用。
