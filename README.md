@@ -375,7 +375,29 @@ CWA_API_KEY
 
 Vercel 與 GitHub Repository 相連，因此 main branch 更新後會觸發新的 Production Deployment。
 
-**Gate 5：部署設定完成；正式線上 Endpoint 驗證見「五、測試與驗證」。**
+正式部署後驗證：
+
+```text
+GET /                                      200
+GET /app.js                                200
+GET /api/weather                           200
+GET /api/db-check?county=新竹縣&limit=3    200
+
+/api/weather:
+storage = sqlite
+build_mode = live_cwa_api
+stations = 362
+latest observation = 2026-09-24T16:50:00+08:00
+
+/api/db-check:
+database = sqlite
+row_count = 724
+sample rows = 3
+```
+
+Vercel runtime 中出現 724 筆 observations，是因為 SQLite 已包含上一個 snapshot，再成功寫入新的 362 站 snapshot，證明資料表可以保留不同 observation time，而不是每次更新直接覆蓋成單一 JSON。
+
+**Gate 5：PASS**
 
 ---
 
@@ -421,18 +443,23 @@ SQLite 不是單純 Cache，而是以 `station_id + obs_time` 為 Key，因此�
 | 驗證項目 | 結果 |
 |---|---|
 | CWA O-A0003-001 真實 Fetch | PASS |
-| Data mode | `live_cwa_api` |
-| Live observation time | 2026-09-24 16:40 +08:00 |
+| Production Data mode | `live_cwa_api` |
+| Production observation time | **2026-09-24 16:50 +08:00** |
 | CWA stations | 362 |
-| SQLite Upsert | 362 rows |
-| SQLite Query 新竹縣 | PASS |
+| SQLite Local Gate 2 寫入 | 362 rows |
+| SQLite Production runtime observations | **724 rows** |
+| SQLite Query 新竹縣 | PASS（3 samples） |
 | SQLite Duplicate Prevention | PASS |
 | SQLite Multiple Observation Times | PASS |
 | `node --check docs/app.js` | PASS |
 | pytest | **18 / 18 PASS** |
-| Local `/api/weather` | HTTP 200 |
-| Local `/api/db-check` | HTTP 200 |
-| GIS API storage | `sqlite` |
+| Production `/` | HTTP 200 |
+| Production `/app.js` | HTTP 200 |
+| Production `/api/weather` | HTTP 200 |
+| Production `/api/db-check` | HTTP 200 |
+| Production GIS API storage | `sqlite` |
+| GitHub Actions | **SUCCESS / live_cwa_api** |
+| Vercel Production | **Ready** |
 
 ---
 
@@ -603,12 +630,14 @@ Vercel Python Serverless
 實際驗證結果：
 
 ```text
-Live CWA stations       362
-SQLite rows             362
-Latest observation      2026-09-24 16:40 +08:00
-pytest                  18/18 PASS
-JavaScript syntax       PASS
-Local GIS/API endpoints PASS
+Live CWA stations          362
+Local Gate 2 SQLite rows    362
+Vercel SQLite runtime rows  724
+Latest observation         2026-09-24 16:50 +08:00
+pytest                     18/18 PASS
+JavaScript syntax          PASS
+GitHub Actions             SUCCESS
+Vercel GIS/API endpoints   PASS
 ```
 
 這次除了完成氣象地圖，也實際走過資料取得、資料庫持久化、SQL Query、GIS、版本管理、測試與 Cloud Deployment 的完整流程。
