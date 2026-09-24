@@ -93,10 +93,10 @@ flowchart TD
 
 ### 實際結果
 - **建置模式（build_mode）：** `live_cwa_api`
-- **主要觀測時間戳：** `2026-09-24T22:50:00+08:00`
-- **測站總數：** 362 站（有效氣溫測站 350 站）
-- **氣溫極值與均溫：** 最低溫 4.8°C（玉山，南投縣）、最高溫 29.3°C（國一N361K，高雄市）、全台平均 24.2°C
-- **最大風速：** 8.6 m/s（恆春工作站，屏東縣）
+- **主要觀測時間戳：** `2026-09-25T02:40:00+08:00`
+- **測站總數：** 362 站（有效氣溫測站 349 站）
+- **氣溫極值與均溫：** 最低溫 4.2°C（玉山，南投縣）、最高溫 28.6°C（臺南，臺南市）、全台平均 23.2°C
+- **最大風速：** 5.1 m/s（文化大學，臺北市）
 
 ### 證據（執行輸出）
 ```text
@@ -105,13 +105,13 @@ flowchart TD
 [SUCCESS] Built station JSON -> docs/data/stations.json
 [SUCCESS] Persisted snapshot to SQLite -> data.db
           - Mode: live_cwa_api
-          - Observation time: 2026-09-24T22:50:00+08:00
-          - Snapshot stations: 362 (Valid temp: 350)
-          - Temp range: 4.8°C (玉山) ~ 29.3°C (國一N361K)
-          - Avg temp: 24.2°C
+          - Observation time: 2026-09-25T02:40:00+08:00
+          - Snapshot stations: 362 (Valid temp: 349)
+          - Temp range: 4.2°C (玉山) ~ 28.6°C (臺南)
+          - Avg temp: 23.2°C
           - SQLite upserted rows: 362
           - SQLite total observation rows: 362
-          - SQLite latest observation: 2026-09-24T22:50:00+08:00
+          - SQLite latest observation: 2026-09-25T02:40:00+08:00
 ```
 - **Gate 1 結論：PASS**
 
@@ -224,14 +224,14 @@ CREATE TABLE IF NOT EXISTS forecast_metadata (
 ```text
 === SQLite Verification (data.db: observations) ===
 Total stations (COUNT): 362
-Observation time:       2026-09-24T22:50:00+08:00
+Observation time:       2026-09-25T02:40:00+08:00
 Build mode:             live_cwa_api
 Storage backend:        sqlite
 
 Sample query (新竹縣, 3 rows):
-  - 五峰站 (72D080) [新竹縣 五峰鄉]: Temp: 19.2°C, RH: 95.0%, Wind: 0.5 m/s, Weather: 晴
-  - 國一N077K (CAD020) [新竹縣 湖口鄉]: Temp: 23.5°C, RH: 84.0%, Wind: 1.0 m/s, Weather: 晴
-  - 國一S082K (CAD030) [新竹縣 湖口鄉]: Temp: 24.2°C, RH: 83.0%, Wind: 0.5 m/s, Weather: 晴
+  - 五峰站 (72D080) [新竹縣 五峰鄉]: Temp: 19.3°C, RH: 82.0%, Wind: 0.8 m/s, Weather: 晴
+  - 國一N077K (CAD020) [新竹縣 湖口鄉]: Temp: 21.1°C, RH: 94.0%, Wind: 1.3 m/s, Weather: 晴
+  - 國一S082K (CAD030) [新竹縣 湖口鄉]: Temp: 22.7°C, RH: 89.0%, Wind: 1.3 m/s, Weather: 晴
 
 === SQLite Verification (data.db: TemperatureForecasts) ===
 Total forecast rows:    42
@@ -305,7 +305,7 @@ Route /api/weather        -> status 200, content-type: application/json
   storage: sqlite
   build_mode: live_cwa_api
   total_stations: 362
-  obs_time: 2026-09-24T22:50:00+08:00
+  obs_time: 2026-09-25T02:40:00+08:00
 Route /api/forecast       -> status 200, content-type: application/json
   storage: sqlite
   build_mode: live_cwa_api
@@ -458,17 +458,17 @@ tests/test_schema.py::test_generated_stations_json_schema PASSED         [100%]
   /api/weather contract:
     - storage:          sqlite
     - build_mode:       live_cwa_api
-    - observation_time: 2026-09-24T22:50:00+08:00
+    - observation_time: 2026-09-25T02:40:00+08:00
     - stations count:   362
 
   /api/db-check proof:
     - database:         sqlite
     - row_count:        362
-    - latest_obs:       2026-09-24T22:50:00+08:00
+    - latest_obs:       2026-09-25T02:40:00+08:00
     - sample rows:
-      * 五峰站 (72D080) [新竹縣 五峰鄉]: Temp 19.2°C, RH 95.0%, Wind 0.5 m/s, Weather: 晴
-      * 國一N077K (CAD020) [新竹縣 湖口鄉]: Temp 23.5°C, RH 84.0%, Wind 1.0 m/s, Weather: 晴
-      * 國一S082K (CAD030) [新竹縣 湖口鄉]: Temp 24.2°C, RH 83.0%, Wind 0.5 m/s, Weather: 晴
+      * 五峰站 (72D080) [新竹縣 五峰鄉]: Temp 19.3°C, RH 82.0%, Wind 0.8 m/s, Weather: 晴
+      * 國一N077K (CAD020) [新竹縣 湖口鄉]: Temp 21.1°C, RH 94.0%, Wind 1.3 m/s, Weather: 晴
+      * 國一S082K (CAD030) [新竹縣 湖口鄉]: Temp 22.7°C, RH 89.0%, Wind 1.3 m/s, Weather: 晴
 
 === GITHUB PAGES FALLBACK VERIFICATION ===
   GET /                      -> HTTP 200
@@ -485,16 +485,16 @@ tests/test_schema.py::test_generated_stations_json_schema PASSED         [100%]
 
 | 驗證項目 | 驗證命令 / 方法 | 預期標準 | 實際結果 | 狀態 |
 |---|---|---|---|:---:|
-| **Gate 1 即時 CWA 資料取得** | 安全載入 API Key 執行 `fetch_and_build.py` | 成功取得 O-A0003-001，產出真實資料 | 取得 362 站，觀測時間 22:50，模式 `live_cwa_api` | **PASS** |
+| **Gate 1 即時 CWA 資料取得** | 安全載入 API Key 執行 `fetch_and_build.py` | 成功取得 O-A0003-001，產出真實資料 | 取得 362 站，觀測時間 02:40，模式 `live_cwa_api` | **PASS** |
 | **7 日預報即時 CWA 資料取得** | 安全載入 API Key 執行 `fetch_and_build.py` | 成功取得 F-C0032-003，產出 6 區 7 日資料 | 取得 42 筆，跨度 2026-09-25..10-01，模式 `live_cwa_api` | **PASS** |
 | **Gate 2 SQLite 測站持久化** | `row_count('data.db')` | 筆數大於 0 | 筆數 = 362 | **PASS** |
 | **Gate 2 SQLite 預報持久化** | `forecast_row_count('data.db')` | 筆數 = 42 (6 區 × 7 天) | 筆數 = 42 | **PASS** |
 | **JSON 與 SQLite 筆數一致性** | 比較 `stations.json` 與 `data.db` | 筆數完全一致 | JSON 362 站 == DB 362 筆 | **PASS** |
 | **預報 JSON 與 SQLite 一致性** | 比較 `forecast.json` 與 `data.db` | 筆數完全一致 | JSON 42 筆 == DB 42 筆 | **PASS** |
-| **SQLite 條件查詢驗證** | `python scripts/query_db.py --county 新竹縣` | 能檢索出新竹縣真實測站與天氣數值 | 檢索出五峰站 (19.2°C)、國一N077K (23.5°C)、國一S082K (24.2°C) | **PASS** |
+| **SQLite 條件查詢驗證** | `python scripts/query_db.py --county 新竹縣` | 能檢索出新竹縣真實測站與天氣數值 | 檢索出五峰站 (19.3°C)、國一N077K (21.1°C)、國一S082K (22.7°C) | **PASS** |
 | **SQLite 重複測站寫入更新** | `test_upsert_duplicate_station_behavior` | 重複測站原地更新，不產生重複列 | 測試通過，筆數維持 1，數值正確更新 | **PASS** |
 | **JavaScript 語法檢查** | `node --check docs/app.js` | 無語法或編譯錯誤 | 結束碼 0，無任何警告或錯誤 | **PASS** |
-| **單元與整合測試套件** | `pytest -v` | 全部通過（30/30） | 30 passed in 0.77s | **PASS** |
+| **單元與整合測試套件** | `pytest -v` | 全部通過（30/30） | 30 passed in 0.69s | **PASS** |
 | **Flask GET `/`** | Flask test client 請求首頁 | HTTP 200 | HTTP 200 | **PASS** |
 | **Flask GET `/app.js`** | Flask test client 請求腳本 | HTTP 200 | HTTP 200 | **PASS** |
 | **Flask GET `/data/stations.json`** | Flask test client 請求降級 JSON | HTTP 200 | HTTP 200 | **PASS** |
