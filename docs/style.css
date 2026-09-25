@@ -827,7 +827,7 @@ body {
   position: absolute;
   top: 85px;
   left: 16px;
-  width: 620px;
+  width: 390px;
   max-height: calc(100vh - 101px);
   z-index: 1000;
   background: var(--bg-panel);
@@ -844,7 +844,7 @@ body {
 }
 
 .forecast-panel.closed {
-  transform: translateX(-650px);
+  transform: translateX(-420px);
   opacity: 0;
   pointer-events: none;
 }
@@ -871,7 +871,7 @@ body {
 
 .forecast-content {
   padding: 12px 14px;
-  overflow: visible;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -881,13 +881,6 @@ body {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 10px;
-}
-
-.forecast-main-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.05fr) minmax(270px, 0.95fr);
-  gap: 12px;
-  align-items: start;
 }
 
 /* Forecast Summary Card */
@@ -1002,7 +995,7 @@ body {
 
 .forecast-chart {
   width: 100%;
-  height: 180px;
+  height: 130px;
   display: block;
 }
 
@@ -1059,10 +1052,8 @@ body {
   border-top: 1px solid var(--bg-panel-border);
   padding-top: 7px;
   display: flex;
-  flex-direction: row;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  flex-direction: column;
+  gap: 2px;
   font-size: 0.68rem;
   color: var(--text-muted);
 }
@@ -1086,8 +1077,7 @@ body {
     max-height: 70vh;
   }
 
-  .forecast-selectors,
-  .forecast-main-grid {
+  .forecast-selectors {
     grid-template-columns: 1fr;
   }
 
@@ -1102,11 +1092,6 @@ body {
 
   .forecast-chart {
     height: auto;
-  }
-
-  .forecast-footer {
-    flex-direction: column;
-    align-items: stretch;
   }
 
   .detail-panel {
