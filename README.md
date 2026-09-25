@@ -55,7 +55,7 @@ flowchart TD
     C -->|唯讀連線| E["Flask Server (server.py)<br/>/api/weather & /api/forecast & /api/db-check"]
     E -->|GIS 視覺化 + 7日預報面板| F["前端 Dashboard<br/>(Leaflet GIS + 原生 SVG 趨勢圖)"]
     D -.->|靜態降級 Fallback| F
-    E -->|程式碼託管 & CI (30 Tests)| G["GitHub Repo + Actions"]
+    E -->|程式碼託管與 CI 測試| G["GitHub Repo + Actions<br/>30 Tests"]
     E -->|Serverless 打包| H["Vercel Production"]
 ```
 
