@@ -8,7 +8,7 @@
 - **CWA Datasets：**
   - 即時測站：`O-A0003-001`（氣象觀測站－10分鐘綜觀氣象資料，全台 362 站即時 GIS）
   - 7 日預報：`F-C0032-003`（一般天氣預報－七天天氣預報，6 區 7 日氣溫預報，42 筆）
-  - 相容備援：`F-A0010-001`（一週農業氣象預報，課程講義舊端點已失效 404，本系統保留解析相容與離線備援）
+  - 相容備援：`F-A0010-001`（一週農業氣象預報，早期教材／相容測試資料格式；本系統保留解析相容與離線備援）
 
 > **Five Gates 核心路線：**  
 > `CWA API (Gate 1) → SQLite (Gate 2) → GIS Dashboard (Gate 3) → GitHub (Gate 4) → Vercel (Gate 5)`
@@ -26,15 +26,15 @@
 本作業的核心目的，是透過 AI Agent pair programming 建立一個具備端到端資料流的完整系統，並以「Five Gates（五道關卡）」落實分步驗證，確保每一階段均有可重現、可檢驗的具體證據（Evidence before claims），避免黑箱產生無法運行的程式碼。
 
 具體達成目標如下：
-1. **Gate 1（真實資料取得）：** 透過中央氣象署 Open Data API 真實取得 `O-A0003-001` 全台氣象測站 10 分鐘觀測資料，完成資料清洗、無效值（`-99` 等）過濾與統計指標計算，產出 `metadata.build_mode = "live_cwa_api"` 的真實觀測資料集。
+1. **Gate 1（真實資料取得）：** 透過中央氣象署 Open Data API 真實取得 `O-A0003-001` 全台氣象測站 10 分鐘觀測資料，以及 `F-C0032-003` 最近 7 日分區氣溫預報；完成資料清洗、無效值過濾、統計與預報正規化，兩條資料線均以 `build_mode = "live_cwa_api"` 驗證為真實來源。
 2. **Gate 2（資料庫持久化）：** 設計符合前端展示與統計需求的關聯綱要，將觀測資料寫入專案根目錄 SQLite 資料庫（`data.db`），包含獨立 `metadata`、`observations` 與 `snapshots` 表，支援原子化快照替換與去重更新機制，並以 SQL Query 實證資料可被正確檢索。
 3. **Gate 3（GIS 前端呈現）：** 以 Leaflet 建立支援 MapTiler 深色/淺色底圖切換的 GIS 前端，首選路徑為呼叫後端 Flask `/api/weather`（背後由 SQLite 提供資料，回傳 `storage = "sqlite"`），在純靜態環境（如 GitHub Pages）則平滑降級為靜態 JSON。
 4. **Gate 4（版本管理與 CI/CD）：** 將完整原始碼、測試、設定納入 GitHub 管理，編寫 `.github/workflows/update-and-deploy.yml` 自動化工作流，納入全套 30 項單元與整合測試及 JavaScript 語法檢查。
 5. **Gate 5（雲端部署）：** 將 Flask Web App 部署至 Vercel Serverless Function，配置 `vercel.json` 打包 `data.db` 快照，誠實揭露 Serverless 唯讀 SQLite 限制與未來外部持久化資料庫演進方向。
-6. **7 日天氣預報功能（課堂教師指定需求）：**
-   - **分區與期程：** 整合中央氣象署 7 日氣溫預報，完整涵蓋課程指定之六大預報分區（北部地區、中部地區、南部地區、東北部地區、東部地區、東南部地區），各區包含 7 日之最低溫（MinT）與最高溫（MaxT），共 42 筆預報紀錄。
+6. **7 日天氣預報功能（對應課堂「最近七天」資料要求）：**
+   - **分區與期程：** 依課程示意與 CWA 資料結構整理為六大預報分區（北部地區、中部地區、南部地區、東北部地區、東部地區、東南部地區），各區包含 7 日之最低溫（MinT）與最高溫（MaxT），共 42 筆預報紀錄。
    - **資料來源與真實性（Live vs Fallback）：**
-     - 課程講義教材原本標註使用 `F-A0010-001`（一週農業氣象預報），但經實際驗證該 API 端點目前回傳 HTTP 404 不存在。
+     - 早期教材與相容測試資料曾使用 `F-A0010-001`（一週農業氣象預報）；本專案保留其 JSON 結構解析相容層，正式 Live 資料則採用目前可用的 `F-C0032-003`。
      - 經查閱中央氣象署官方 Open Data 規範，目前現行有效之 7 日分區預報正式 Dataset 為 `F-C0032-003`（一般天氣預報－七天天氣預報）。
      - 本專案 Live 資料管線採用官方現行 `F-C0032-003` 真實抓取即時預報，產出之最新驗證資料跨度為 **2026-09-25 至 2026-10-01**，Metadata 誠實標示 `source_dataset = "F-C0032-003"`、`build_mode = "live_cwa_api"`。
      - 同時保留對舊版 `F-A0010-001` JSON 結構之解析相容層與離線 Fixture（`forecast_fixture.json`），僅於網路斷線時作為容錯降級，且明確標註 `fallback_fixture`，絕不偽裝為即時資料。
@@ -79,17 +79,18 @@ flowchart TD
 
 # 三、開發步驟與 Five Gates 驗證
 
-## Gate 1｜中央氣象署即時觀測資料取得 (CWA Acquisition)
+## Gate 1｜中央氣象署真實資料取得：即時觀測＋7 日預報 (CWA Acquisition)
 
 ### 工作內容
 1. 程式透過環境變數 `CWA_API_KEY` 或本機受保護之 `.env` / `api_key.txt` 檔案載入憑證（絕不在日誌、命令列或終端機中印出金鑰內容）。
-2. 發起 HTTP 請求呼叫 `https://opendata.cwa.gov.tw/api/v1/rest/datastore/O-A0003-001` 取得即時 10 分鐘綜觀氣象資料。
-3. 由 `scripts/normalize.py` 處理 CWA 特殊哨兵值（如 `-99`, `-999`, `-9999` 代表儀器故障或缺測，一律正規化為 `None`），解析氣溫、相對濕度、測站氣壓、風速、風向、陣風、降水量與紫外線指數。
-4. 計算全台極值指標（最高溫測站、最低溫測站、平均氣溫、最大風速測站）。
-5. 寫入標準結構至 `docs/data/stations.json`，並設定 `build_mode = "live_cwa_api"`（離線 fixture 僅作為容錯備援，不作為正式達成指標）。
+2. 發起 HTTP 請求呼叫 `O-A0003-001`，取得全台氣象測站即時 10 分鐘綜觀氣象資料。
+3. 同一建置流程呼叫 `F-C0032-003`，取得最近 7 日分區天氣預報資料。
+4. 由 `scripts/normalize.py` 處理 CWA 特殊哨兵值與欄位正規化，解析即時觀測之氣溫、濕度、氣壓、風速等資料，並整理 7 日預報之 `regionName / dataDate / MinT / MaxT`。
+5. 計算全台即時觀測極值指標，並將 7 日預報整理為 6 區 × 7 天共 42 筆資料。
+6. 分別產出 `docs/data/stations.json` 與 `docs/data/forecast.json`，正式驗證皆要求 `build_mode = "live_cwa_api"`；fixture 僅作容錯備援，不作為 Gate 1 正式達成指標。
 
 ### 驗證方式
-執行建置腳本 `python scripts/fetch_and_build.py`，檢查輸出之建置模式、觀測時間戳、站點統計數據，並驗證產出之 JSON 格式。
+執行建置腳本 `python scripts/fetch_and_build.py`，同時檢查即時觀測與 7 日預報之建置模式、時間戳、筆數與實際輸出；Gate 1 必須能看到真實 CWA output，而不是僅有前端假資料。
 
 ### 實際結果
 - **建置模式（build_mode）：** `live_cwa_api`
@@ -97,6 +98,9 @@ flowchart TD
 - **測站總數：** 362 站（有效氣溫測站 349 站）
 - **氣溫極值與均溫：** 最低溫 4.2°C（玉山，南投縣）、最高溫 28.6°C（臺南，臺南市）、全台平均 23.2°C
 - **最大風速：** 5.1 m/s（文化大學，臺北市）
+- **7 日預報 Dataset：** `F-C0032-003`
+- **預報分區／日期：** 6 區、7 個日期，共 42 筆；日期跨度 `2026-09-25` ～ `2026-10-01`
+- **預報樣本：** 北部地區 `2026-09-25` → MinT 22°C / MaxT 34°C
 
 ### 證據（執行輸出）
 ```text
@@ -112,6 +116,13 @@ flowchart TD
           - SQLite upserted rows: 362
           - SQLite total observation rows: 362
           - SQLite latest observation: 2026-09-25T02:40:00+08:00
+[INFO] Fetching live forecast from CWA API (F-C0032-003)...
+[SUCCESS] Built forecast JSON -> docs/data/forecast.json
+          - Mode: live_cwa_api
+          - Regions: 6
+          - Dates: 7 (2026-09-25 .. 2026-10-01)
+          - Forecast rows: 42
+          - Sample: 北部地區 2026-09-25 MinT 22°C / MaxT 34°C
 ```
 - **Gate 1 結論：PASS**
 
@@ -545,7 +556,7 @@ tests/test_schema.py::test_generated_stations_json_schema PASSED         [100%]
 - **Local 本地端：** 專案根目錄的 `data.db` 為可寫入資料庫。依現有實作架構，`observations` 表以 `station_id` 為主鍵，維護當前各測站的最新即時觀測快照與原地更新狀態（不無限制持續堆疊所有歷次歷史測站列，避免體積暴增）；而 `snapshots` 表則以 `(obs_time, source_mode)` 為複合主鍵，保存歷次快照的摘要與歷史詮釋資料（Metadata）。
 - **Vercel Serverless 端：** Serverless Function 為無狀態（Stateless）容器，其短暫容器重啟或回收後，本地寫入無法持久保存。
 - **最佳實踐決策：**
-  遵循課堂示範要求，將 `data.db` 定位為**隨專案打包的結構化唯讀快照（Bundled SQLite Snapshot）**。此做法確保了 Serverless 端具備真實的 SQLite 查詢路徑，同時具備極高讀取效能與零額外雲端資料庫維護成本。
+  考量 Vercel Serverless 的持久化限制，本專案將 `data.db` 定位為**隨專案打包的結構化唯讀快照（Bundled SQLite Snapshot）**。此做法確保 Serverless 端仍具備真實的 SQLite 查詢路徑，同時避免把執行期容器的暫時寫入誤認為永久持久化。
   針對長期歷史資料累積（如 24 小時全測站逐時溫度變化圖表、歷年極值分析），未來架構應演進為串接外部託管資料庫（如 PostgreSQL / Supabase / Neon），以達成跨實例、跨容器的持久化寫入。
 
 ## 3. 雙層金鑰安全隔離設計
