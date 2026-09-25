@@ -269,6 +269,7 @@ Sample forecast query (北部地區, 2026-09-25):
      - 原生輕量化 SVG 雙折線圖（MinT 藍色 `#60a5fa`、MaxT 紅色 `#f87171`），含垂直選取引導線、數值標註與可點擊欄位。
      - 7 日預報數據表格，顯示完整 7 天日期、MinT、MaxT，點擊表格列即時連動選取日期與折線圖高亮。
      - 頂部導航列包含「📅 7 日天氣預報」展開/收合切換按鈕，支援響應式行動裝置排版。
+     - **桌面版面避讓修正：** 左側 `#forecast-panel` 與右側 `.sidebar` 統一由 `top: 116px` 開始顯示，並同步設定 `max-height: calc(100vh - 132px)`，確保兩個浮動面板完整位於頂部「台灣即時氣象測站觀測網」主框下方，不覆蓋 Header 邊界；行動版仍保留原有響應式單欄與捲動行為。
 
 ### 7 段氣溫色階規範
 
@@ -294,6 +295,7 @@ Sample forecast query (北部地區, 2026-09-25):
 - `/api/forecast?region=北部地區` 成功依分區過濾，回傳 7 筆預報紀錄。
 - `/api/db-check` 成功執行 SQL 查詢，回傳 `row_count: 362` 與新竹縣 5 筆樣本文檔。
 - 前端 JavaScript 語法檢查通過，無任何語法錯誤。
+- 桌面版 UI 已完成 Header 避讓驗證：7 日預報面板與測站篩選控制面板皆下移至 `top: 116px`，不再覆蓋頂部主框。
 
 ### 證據（本機路由檢驗輸出）
 ```text
@@ -429,20 +431,25 @@ tests/test_schema.py::test_generated_stations_json_schema PASSED         [100%]
 4. **線上實測驗證：** 推送至 `main` 後，對正式部署網址 `https://0923-site.vercel.app/` 進行 HTTP 狀態碼與 JSON 回傳值驗證。
 
 ### 驗證方式
-對生產環境 URL 發起 HTTP 請求，驗證 `/`, `/app.js`, `/api/weather`, `/api/db-check` 以及 GitHub Pages 站點連線。
+對生產環境 URL 發起 HTTP 請求，驗證 `/`, `/app.js`, `/style.css`, `/api/weather`, `/api/forecast`, `/api/db-check` 以及 GitHub Pages 站點連線；並檢查正式部署 CSS 中左右浮動面板的 Header 避讓設定是否已生效。
 
 ### 實際結果
 - 線上生產環境所有端點均回傳 HTTP 200。
 - 線上 `/api/weather` 確認 `storage = "sqlite"`，`build_mode = "live_cwa_api"`，測站筆數一致。
+- 線上 `/api/forecast` 確認由 SQLite 提供 `F-C0032-003` 的 6 區 42 筆 7 日預報，分區查詢亦可正常回傳 7 筆資料。
 - 線上 `/api/db-check` 成功執行真實 SQL 查詢，回傳 `database = "sqlite"`，`row_count = 362`。
+- 線上 `/style.css` 已確認正式部署包含 `.sidebar` 與 `.forecast-panel` 的 `top: 116px` / `max-height: calc(100vh - 132px)`，兩側面板不再覆蓋頂部 Header。
 
 ### 證據（線上端點驗證結果）
 | 端點 | HTTP 狀態 | 驗證指標 | 判定 |
 |---|:---:|---|:---:|
 | `https://0923-site.vercel.app/` | 200 | 首頁儀表板 HTML 正常載入 | **PASS** |
 | `https://0923-site.vercel.app/app.js` | 200 | 前端邏輯腳本載入正常 | **PASS** |
+| `https://0923-site.vercel.app/style.css` | 200 | 正式 CSS 已套用左右浮動面板 `top: 116px` Header 避讓設定 | **PASS** |
 | `https://0923-site.vercel.app/data/stations.json` | 200 | 靜態 JSON 降級檔正常 | **PASS** |
 | `https://0923-site.vercel.app/api/weather` | 200 | `storage: sqlite`、`build_mode: live_cwa_api`、總站數 362 | **PASS** |
+| `https://0923-site.vercel.app/api/forecast` | 200 | `storage: sqlite`、`source_dataset: F-C0032-003`、6 區共 42 筆 | **PASS** |
+| `https://0923-site.vercel.app/api/forecast?region=北部地區` | 200 | 北部地區成功過濾為 7 筆預報 | **PASS** |
 | `https://0923-site.vercel.app/api/db-check?county=新竹縣&limit=3` | 200 | `database: sqlite`、`row_count: 362`、新竹縣 SQL 抽樣正常 | **PASS** |
 | `https://prometheans152.github.io/0923/` | 200 | GitHub Pages 備援站台正常 | **PASS** |
 | `https://prometheans152.github.io/0923/data/stations.json` | 200 | 靜態 JSON 降級備援正常 | **PASS** |
@@ -451,8 +458,11 @@ tests/test_schema.py::test_generated_stations_json_schema PASSED         [100%]
 === VERCEL PRODUCTION VERIFICATION ===
   GET /                      -> HTTP 200
   GET /app.js                -> HTTP 200
+  GET /style.css             -> HTTP 200
   GET /data/stations.json    -> HTTP 200
   GET /api/weather           -> HTTP 200
+  GET /api/forecast          -> HTTP 200
+  GET /api/forecast?region=北部地區 -> HTTP 200
   GET /api/db-check          -> HTTP 200
 
   /api/weather contract:
@@ -460,6 +470,20 @@ tests/test_schema.py::test_generated_stations_json_schema PASSED         [100%]
     - build_mode:       live_cwa_api
     - observation_time: 2026-09-25T02:40:00+08:00
     - stations count:   362
+
+  /api/forecast contract:
+    - storage:          sqlite
+    - build_mode:       live_cwa_api
+    - source_dataset:   F-C0032-003
+    - total_regions:    6
+    - total_records:    42
+    - date_span:        2026-09-25 .. 2026-10-01
+
+  deployed layout proof:
+    - .sidebar top:          116px
+    - .forecast-panel top:   116px
+    - max-height:            calc(100vh - 132px)
+    - result:                both floating panels start below the top header
 
   /api/db-check proof:
     - database:         sqlite
@@ -503,6 +527,7 @@ tests/test_schema.py::test_generated_stations_json_schema PASSED         [100%]
 | **Flask GET `/api/forecast`** | Flask test client 請求預報 API | HTTP 200，資料由 SQLite 提供 | HTTP 200，`storage: "sqlite"`，筆數 42 | **PASS** |
 | **Flask GET `/api/forecast?region=北部地區`** | Flask test client 請求分區過濾 | HTTP 200，過濾 7 筆 | HTTP 200，筆數 7 | **PASS** |
 | **Flask GET `/api/db-check`** | Flask test client 請求驗證端點 | HTTP 200，包含資料庫摘要 | HTTP 200，`database: "sqlite"`，筆數 362 | **PASS** |
+| **桌面 Header 避讓版面** | Production CSS / 實際部署畫面檢查 | 預報與控制面板不得覆蓋頂部主框 | `.sidebar` 與 `.forecast-panel` 皆為 `top: 116px`，已位於 Header 下方 | **PASS** |
 
 ---
 
