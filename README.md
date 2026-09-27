@@ -29,7 +29,7 @@
 1. **Gate 1（真實資料取得）：** 透過中央氣象署 Open Data API 真實取得 `O-A0003-001` 全台氣象測站 10 分鐘觀測資料，以及 `F-C0032-003` 最近 7 日分區氣溫預報；完成資料清洗、無效值過濾、統計與預報正規化，兩條資料線均以 `build_mode = "live_cwa_api"` 驗證為真實來源。
 2. **Gate 2（資料庫持久化）：** 設計符合前端展示與統計需求的關聯綱要，將觀測資料寫入專案根目錄 SQLite 資料庫（`data.db`），包含獨立 `metadata`、`observations` 與 `snapshots` 表，支援原子化快照替換與去重更新機制，並以 SQL Query 實證資料可被正確檢索。
 3. **Gate 3（GIS 前端呈現）：** 以 Leaflet 建立支援 MapTiler 深色/淺色底圖切換的 GIS 前端，首選路徑為呼叫後端 Flask `/api/weather`（背後由 SQLite 提供資料，回傳 `storage = "sqlite"`），在純靜態環境（如 GitHub Pages）則平滑降級為靜態 JSON。
-4. **Gate 4（版本管理與 CI/CD）：** 將完整原始碼、測試、設定納入 GitHub 管理，編寫 `.github/workflows/update-and-deploy.yml` 自動化工作流，納入全套 30 項單元與整合測試及 JavaScript 語法檢查。
+4. **Gate 4（版本管理與 CI/CD）：** 將完整原始碼、測試、設定納入 GitHub 管理，編寫 `.github/workflows/update-and-deploy.yml` 自動化工作流，納入全套 36 項單元與整合測試（含 30 項基準測試與 6 項唯讀回歸測試）及 JavaScript 語法檢查。
 5. **Gate 5（雲端部署）：** 將 Flask Web App 部署至 Vercel Serverless Function，配置 `vercel.json` 打包 `data.db` 快照，誠實揭露 Serverless 唯讀 SQLite 限制與未來外部持久化資料庫演進方向。
 6. **7 日天氣預報功能（對應課堂「最近七天」資料要求）：**
    - **分區與期程：** 依課程示意與 CWA 資料結構整理為六大預報分區（北部地區、中部地區、南部地區、東北部地區、東部地區、東南部地區），各區包含 7 日之最低溫（MinT）與最高溫（MaxT），共 42 筆預報紀錄。
@@ -55,7 +55,7 @@ flowchart TD
     C -->|唯讀連線| E["Flask Server (server.py)<br/>/api/weather & /api/forecast & /api/db-check"]
     E -->|GIS 視覺化 + 7日預報面板| F["前端 Dashboard<br/>(Leaflet GIS + 原生 SVG 趨勢圖)"]
     D -.->|靜態降級 Fallback| F
-    E -->|程式碼託管與 CI 測試| G["GitHub Repo + Actions<br/>30 Tests"]
+    E -->|程式碼託管與 CI 測試| G["GitHub Repo + Actions<br/>36 Tests"]
     E -->|Serverless 打包| H["Vercel Production"]
 ```
 
@@ -73,7 +73,7 @@ flowchart TD
 | **底圖切換** | MapTiler Streets v4 / Dark | 依使用者偏好切換深色與淺色向量光柵底圖 |
 | **版本管理** | Git + GitHub | 程式碼歷程管理、CI 自動化測試工作流 |
 | **雲端部署** | Vercel (`@vercel/python`) | Python Serverless Function，打包唯讀 SQLite 快照 |
-| **自動化測試** | pytest (30 tests) + node --check | 覆蓋 Schema、色階、SQLite 綱要、重複寫入、7日預報資料表、Flask API |
+| **自動化測試** | pytest (36 tests) + node --check | 覆蓋 Schema、色階、SQLite 綱要、重複寫入、7日預報資料表、嚴格唯讀回歸、Flask API |
 
 ---
 
@@ -210,12 +210,8 @@ CREATE TABLE IF NOT EXISTS forecast_metadata (
     id INTEGER PRIMARY KEY CHECK (id = 1),
     source TEXT NOT NULL,
     source_dataset TEXT NOT NULL,
-    generated_at TEXT NOT NULL,
-    total_regions INTEGER NOT NULL,
-    total_records INTEGER NOT NULL,
     build_mode TEXT NOT NULL,
-    storage TEXT NOT NULL,
-    regions_json TEXT NOT NULL
+    generated_at TEXT
 );
 ```
 
@@ -343,57 +339,63 @@ node --check docs/app.js  -> 結束碼 0 (PASS)
    - 定時排程（每 30 分鐘執行一次）與手動觸發（`workflow_dispatch`）。
    - 工作流設定為預期讀取 Repository Secret `secrets.CWA_API_KEY`（若遠端 Repository Secret 有配置）；誠實說明：我們未獨立驗證遠端 GitHub Repository Secret 之設定狀態。若未配置該密鑰，建置腳本具備備援容錯機制，不會導致建置崩潰。
    - 自動執行 `fetch_and_build.py` 同步重建 `stations.json`、`forecast.json` 與 `data.db`（同時包含 362 站即時觀測與 42 筆 7 日預報）。
-   - 執行品質門檻驗證：`pytest -v`（全套 30 個測試）與 `node --check docs/app.js`。
+   - 執行品質門檻驗證：`pytest -v`（全套 36 個測試，含 30 項基礎驗證與 6 項唯讀回歸測試）與 `node --check docs/app.js`。
    - 自動上傳 `docs/` 目錄並發布至 GitHub Pages。
 
 ### 驗證方式
-1. 本機執行完整測試套件 `pytest -v` 確保所有 30 項測試全部通過。
+1. 本機執行完整測試套件 `pytest -v` 確保所有 36 項測試全部通過（含 6 項嚴格唯讀安全回歸）。
 2. 檢查 `.gitignore` 確保 `.env` 與暫存檔案未被加入 staging。
 3. 檢查 Git 提交歷程與遠端關聯。
 
 ### 實際結果
-- 單元與整合測試共 30 項全部通過（包含氣溫色階、Schema 結構、SQLite 綱要、重複測站處理、列數一致性、Flask API，以及新增之 7 日預報資料表、F-C0032-003 解析、F-A0010-001 相容、資料庫整合與日期間隔驗證測試）。
+- 單元與整合測試共 36 項全部通過（包含氣溫色階、Schema 結構、SQLite 綱要、重複測站處理、列數一致性、Flask API、7 日預報資料表、F-C0032-003 解析、F-A0010-001 相容、資料庫整合，以及嚴格唯讀連線模式、URI 路徑安全編碼、禁止 fallback RW、查詢禁調 init_db、503 安全容錯等 6 項回歸測試）。
 - `.env` 與 `api_key.txt` 確實被忽略且未追蹤。
 
 ### 證據（測試輸出）
 ```text
 ============================= test session starts =============================
-platform win32 -- Python 3.12.10, pytest-9.1.1, pluggy-1.6.0
+platform win32 -- Python 3.12.10, pytest-9.0.3, pluggy-1.6.0
 rootdir: C:\Users\prometheans\Desktop\AIOT\week3-cwa-station-map
-collected 30 items
+collected 36 items
 
-tests/test_color_scale.py::test_temperature_below_10_is_blue PASSED      [  3%]
-tests/test_color_scale.py::test_temperature_20_to_25_is_yellowish PASSED [  6%]
-tests/test_color_scale.py::test_temperature_above_35_is_deep_red PASSED  [ 10%]
-tests/test_color_scale.py::test_temperature_intermediate_bins PASSED     [ 13%]
-tests/test_color_scale.py::test_missing_temperature PASSED               [ 16%]
-tests/test_database.py::test_schema_initializes PASSED                   [ 20%]
-tests/test_database.py::test_metadata_table_fields PASSED                [ 23%]
-tests/test_database.py::test_atomic_snapshot_replacement PASSED          [ 26%]
-tests/test_database.py::test_upsert_duplicate_station_behavior PASSED    [ 30%]
-tests/test_database.py::test_row_count_matches_json PASSED               [ 33%]
-tests/test_database.py::test_query_sample_works PASSED                   [ 36%]
-tests/test_database.py::test_latest_payload_reconstruction PASSED        [ 40%]
-tests/test_database.py::test_flask_api_weather_uses_sqlite PASSED        [ 43%]
-tests/test_database.py::test_flask_routes_all_200 PASSED                 [ 46%]
-tests/test_forecast.py::test_temperature_forecasts_table_schema PASSED   [ 50%]
-tests/test_forecast.py::test_normalize_forecast_dataset_legacy_fa0010_001 PASSED [ 53%]
-tests/test_forecast.py::test_normalize_forecast_dataset_fc0032_003 PASSED [ 56%]
-tests/test_forecast.py::test_forecast_db_helpers PASSED                  [ 60%]
-tests/test_forecast.py::test_forecast_live_integration_and_current_dates PASSED [ 63%]
-tests/test_forecast.py::test_flask_api_forecast_routes PASSED            [ 66%]
-tests/test_forecast.py::test_observation_data_preserved_during_forecast_generation PASSED [ 70%]
-tests/test_forecast.py::test_honest_fallback_reporting PASSED            [ 73%]
-tests/test_normalize.py::test_clean_number_sentinels PASSED              [ 76%]
-tests/test_normalize.py::test_clean_number_valid PASSED                  [ 80%]
-tests/test_normalize.py::test_clean_number_bounds PASSED                 [ 83%]
-tests/test_normalize.py::test_extract_coordinates PASSED                 [ 86%]
-tests/test_normalize.py::test_normalize_station_valid PASSED             [ 90%]
-tests/test_normalize.py::test_normalize_station_missing_coords_dropped PASSED [ 93%]
-tests/test_normalize.py::test_normalize_dataset_summary_stats PASSED     [ 96%]
+tests/test_color_scale.py::test_temperature_below_10_is_blue PASSED      [  2%]
+tests/test_color_scale.py::test_temperature_20_to_25_is_yellowish PASSED [  5%]
+tests/test_color_scale.py::test_temperature_above_35_is_deep_red PASSED  [  8%]
+tests/test_color_scale.py::test_temperature_intermediate_bins PASSED     [ 11%]
+tests/test_color_scale.py::test_missing_temperature PASSED               [ 13%]
+tests/test_database.py::test_schema_initializes PASSED                   [ 16%]
+tests/test_database.py::test_metadata_table_fields PASSED                [ 19%]
+tests/test_database.py::test_atomic_snapshot_replacement PASSED          [ 22%]
+tests/test_database.py::test_upsert_duplicate_station_behavior PASSED    [ 25%]
+tests/test_database.py::test_row_count_matches_json PASSED               [ 27%]
+tests/test_database.py::test_query_sample_works PASSED                   [ 30%]
+tests/test_database.py::test_latest_payload_reconstruction PASSED        [ 33%]
+tests/test_database.py::test_flask_api_weather_uses_sqlite PASSED        [ 36%]
+tests/test_database.py::test_flask_routes_all_200 PASSED                 [ 38%]
+tests/test_forecast.py::test_temperature_forecasts_table_schema PASSED   [ 41%]
+tests/test_forecast.py::test_normalize_forecast_dataset_legacy_fa0010_001 PASSED [ 44%]
+tests/test_forecast.py::test_normalize_forecast_dataset_fc0032_003 PASSED [ 47%]
+tests/test_forecast.py::test_forecast_db_helpers PASSED                  [ 50%]
+tests/test_forecast.py::test_forecast_live_integration_and_current_dates PASSED [ 52%]
+tests/test_forecast.py::test_flask_api_forecast_routes PASSED            [ 55%]
+tests/test_forecast.py::test_observation_data_preserved_during_forecast_generation PASSED [ 58%]
+tests/test_forecast.py::test_honest_fallback_reporting PASSED            [ 61%]
+tests/test_normalize.py::test_clean_number_sentinels PASSED              [ 63%]
+tests/test_normalize.py::test_clean_number_valid PASSED                  [ 66%]
+tests/test_normalize.py::test_clean_number_bounds PASSED                 [ 69%]
+tests/test_normalize.py::test_extract_coordinates PASSED                 [ 72%]
+tests/test_normalize.py::test_normalize_station_valid PASSED             [ 75%]
+tests/test_normalize.py::test_normalize_station_missing_coords_dropped PASSED [ 77%]
+tests/test_normalize.py::test_normalize_dataset_summary_stats PASSED     [ 80%]
+tests/test_readonly_regression.py::test_connect_readonly_nonexistent_file_raises_and_creates_nothing PASSED [ 83%]
+tests/test_readonly_regression.py::test_connect_readonly_path_with_special_characters PASSED [ 86%]
+tests/test_readonly_regression.py::test_connect_readonly_never_falls_back_to_readwrite PASSED [ 88%]
+tests/test_readonly_regression.py::test_query_helpers_do_not_call_init_db PASSED [ 91%]
+tests/test_readonly_regression.py::test_apis_succeed_with_existing_bundled_db_in_readonly_mode PASSED [ 94%]
+tests/test_readonly_regression.py::test_server_missing_or_corrupt_db_returns_safe_503_and_no_leak PASSED [ 97%]
 tests/test_schema.py::test_generated_stations_json_schema PASSED         [100%]
 
-============================= 30 passed in 0.77s ==============================
+============================= 36 passed in 0.80s ==============================
 ```
 - **Gate 4 結論：PASS**
 
@@ -428,6 +430,10 @@ tests/test_schema.py::test_generated_stations_json_schema PASSED         [100%]
          "dest": "/api/index.py"
        },
        {
+         "src": "/api/forecast",
+         "dest": "/api/index.py"
+       },
+       {
          "src": "/(.*)",
          "dest": "/api/index.py"
        }
@@ -437,7 +443,8 @@ tests/test_schema.py::test_generated_stations_json_schema PASSED         [100%]
 2. **`includeFiles` 打包 `data.db`：** 確保 Vercel 建置映像檔時，根目錄的 SQLite 資料庫檔案隨 Function 一同發布。
 3. **Serverless SQLite 限制與真實架構說明：**
    - Vercel Serverless Function 為無狀態（Stateless）容器，其執行環境具備唯讀或暫時特性。
-   - 本系統遵循設計規範，將隨部署發布的 `data.db` 作為**唯讀快照資料庫（Bundled Read-Only Snapshot）**。後端 Flask 採用唯讀模式（`mode=ro`）直接連線查詢，不進行不可靠的執行期持久化寫入。
+   - 本系統遵循設計規範，將隨部署發布的 `data.db` 作為**唯讀快照資料庫（Bundled Read-Only Snapshot）**。後端 Flask 採用嚴格唯讀模式（`mode=ro`，透過 `Path.resolve().as_uri() + "?mode=ro"` 進行標準 URI 編碼連線）直接連線查詢，不進行不可靠的執行期持久化寫入，亦杜絕靜默降級為可寫連線或執行期自動 `init_db` / 建表。
+   - **安全容錯與快照守則：** HTTP GET 查詢路徑嚴格禁止寫入、建目錄或自動 seed。若執行期遺失或快照損毀，端點統一回傳安全 JSON 503（`{"error": "... unavailable"}`），絕不外洩內部主機路徑；本機環境需先由 `python scripts/fetch_and_build.py` 產出快照，方可供伺服器唯讀檢索。
    - 若未來需要多實例共享的跨請求歷史觀測持久寫入，應串接外部雲端資料庫（如 PostgreSQL / Supabase / Neon）。
 4. **線上實測驗證：** 推送至 `main` 後，對正式部署網址 `https://0923-site.vercel.app/` 進行 HTTP 狀態碼與 JSON 回傳值驗證。
 
@@ -529,7 +536,7 @@ tests/test_schema.py::test_generated_stations_json_schema PASSED         [100%]
 | **SQLite 條件查詢驗證** | `python scripts/query_db.py --county 新竹縣` | 能檢索出新竹縣真實測站與天氣數值 | 檢索出五峰站 (19.3°C)、國一N077K (21.1°C)、國一S082K (22.7°C) | **PASS** |
 | **SQLite 重複測站寫入更新** | `test_upsert_duplicate_station_behavior` | 重複測站原地更新，不產生重複列 | 測試通過，筆數維持 1，數值正確更新 | **PASS** |
 | **JavaScript 語法檢查** | `node --check docs/app.js` | 無語法或編譯錯誤 | 結束碼 0，無任何警告或錯誤 | **PASS** |
-| **單元與整合測試套件** | `pytest -v` | 全部通過（30/30） | 30 passed in 0.69s | **PASS** |
+| **單元與整合測試套件** | `pytest -v` | 全部通過（36/36，含 6 項唯讀回歸測試） | 36 passed in 0.80s | **PASS** |
 | **Flask GET `/`** | Flask test client 請求首頁 | HTTP 200 | HTTP 200 | **PASS** |
 | **Flask GET `/app.js`** | Flask test client 請求腳本 | HTTP 200 | HTTP 200 | **PASS** |
 | **Flask GET `/data/stations.json`** | Flask test client 請求降級 JSON | HTTP 200 | HTTP 200 | **PASS** |

@@ -32,15 +32,12 @@ def connect(db_path: Path | str) -> sqlite3.Connection:
 
 
 def connect_readonly(db_path: Path | str) -> sqlite3.Connection:
-    """Connect to SQLite database in read-only mode where supported."""
+    """Connect to SQLite database strictly in read-only mode (mode=ro)."""
     path = Path(db_path).resolve()
     if not path.is_file():
-        return connect(path)
-    uri_path = f"file:{path.as_posix()}?mode=ro"
-    try:
-        conn = sqlite3.connect(uri_path, uri=True)
-    except Exception:
-        conn = sqlite3.connect(path)
+        raise FileNotFoundError(f"Database snapshot not found: {path.name}")
+    uri_path = f"{path.as_uri()}?mode=ro"
+    conn = sqlite3.connect(uri_path, uri=True)
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -240,14 +237,12 @@ def upsert_payload(
 
 def row_count(db_path: Path | str) -> int:
     """Return the total number of stations in the SQLite database."""
-    init_db(db_path)
     with connect_readonly(db_path) as conn:
         return int(conn.execute("SELECT COUNT(*) FROM observations").fetchone()[0])
 
 
 def latest_observation_time(db_path: Path | str) -> Optional[str]:
     """Return the primary observation timestamp recorded in metadata or observations."""
-    init_db(db_path)
     with connect_readonly(db_path) as conn:
         meta_row = conn.execute("SELECT observation_time FROM metadata WHERE id = 1").fetchone()
         if meta_row and meta_row["observation_time"]:
@@ -262,7 +257,6 @@ def query_sample(
     limit: int = 5,
 ) -> List[Dict[str, Any]]:
     """Query a sample of weather observation rows safely for inspection."""
-    init_db(db_path)
     limit = max(1, min(int(limit), 50))
     with connect_readonly(db_path) as conn:
         if county:
@@ -293,7 +287,6 @@ def query_sample(
 
 def payload_from_db(db_path: Path | str) -> Dict[str, Any]:
     """Reconstruct the complete frontend payload directly from SQLite."""
-    init_db(db_path)
     with connect_readonly(db_path) as conn:
         meta_row = conn.execute("SELECT * FROM metadata WHERE id = 1").fetchone()
         obs_rows = conn.execute(
@@ -496,7 +489,6 @@ def upsert_forecast_payload(
 
 def forecast_row_count(db_path: Path | str) -> int:
     """Return total number of rows in TemperatureForecasts table."""
-    init_db(db_path)
     with connect_readonly(db_path) as conn:
         row = conn.execute("SELECT COUNT(*) FROM TemperatureForecasts").fetchone()
         return int(row[0]) if row else 0
@@ -504,7 +496,6 @@ def forecast_row_count(db_path: Path | str) -> int:
 
 def list_forecast_regions(db_path: Path | str) -> List[str]:
     """Return distinct region names present in TemperatureForecasts, in course order."""
-    init_db(db_path)
     with connect_readonly(db_path) as conn:
         rows = conn.execute(
             "SELECT DISTINCT regionName FROM TemperatureForecasts"
@@ -521,7 +512,6 @@ def query_forecast_rows(
     region: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """Query forecast rows, optionally filtered by regionName."""
-    init_db(db_path)
     with connect_readonly(db_path) as conn:
         if region:
             db_rows = conn.execute(
@@ -569,7 +559,6 @@ def forecast_payload_from_db(
     region: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Reconstruct complete forecast payload directly from SQLite."""
-    init_db(db_path)
     regions = list_forecast_regions(db_path)
     rows = query_forecast_rows(db_path, region=region)
 
@@ -610,7 +599,7 @@ def verify_database(db_path: Path | str, county: str = "新竹縣", limit: int =
     """Print non-secret verification details for Gate 2 inspection."""
     path = Path(db_path)
     if not path.is_file():
-        print(f"[ERROR] Database file not found at: {path}")
+        print(f"[ERROR] Database file not found at: {path.name}")
         return
 
     count = row_count(path)

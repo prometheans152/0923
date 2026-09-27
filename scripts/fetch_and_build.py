@@ -262,7 +262,7 @@ def build_forecast_dataset(
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Fetch CWA O-A0003-001 and F-A0010-001, normalize them, and persist them in SQLite"
+        description="Fetch CWA O-A0003-001 and F-C0032-003, normalize them, and persist them in SQLite"
     )
     parser.add_argument(
         "--output",
